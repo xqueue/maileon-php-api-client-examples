@@ -1,0 +1,42 @@
+{
+    "name": "xqueue/maileon-api-client-examples",
+    "description": "Integration tests and CLI examples for the Maileon PHP API client",
+    "type": "project",
+    "license": "MIT",
+    "authors": [
+        {
+            "name": "XQueue GmbH, Marcus Beckerle",
+            "email": "marcus.beckerle@xqueue.com"
+        }
+    ],
+    "require": {
+        "php": "^7.4|^8.0",
+        "ext-curl": "*",
+        "ext-json": "*",
+        "xqueue/maileon-api-client": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.5"
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Maileon\\Test\\": "tests/"
+        }
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test:ping": "phpunit --filter PingServiceTest",
+        "test:contacts": "phpunit --filter ContactsServiceTest",
+        "test:contactfilters": "phpunit --filter ContactFiltersServiceTest",
+        "test:targetgroups": "phpunit --filter TargetGroupsServiceTest",
+        "test:mailings": "phpunit --filter MailingsServiceTest",
+        "test:media": "phpunit --filter MediaServiceTest",
+        "test:reports": "phpunit --filter ReportsServiceTest",
+        "test:transactions": "phpunit --filter TransactionsServiceTest",
+        "test:blacklists": "phpunit --filter BlacklistsServiceTest",
+        "test:mailing-blacklists": "phpunit --filter MailingBlacklistsServiceTest",
+        "test:account": "phpunit --filter AccountServiceTest",
+        "test:webhooks": "phpunit --filter WebhooksServiceTest",
+        "test:dataextensions": "phpunit --filter DataExtensionsServiceTest"
+    }
+}

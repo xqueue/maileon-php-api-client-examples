@@ -1,0 +1,11 @@
+{
+    "type_name": "my_order_type",
+    "contact_email": "jane.doe@example.com",
+    "attributes": {
+        "order_id": "ORD-20240519-001",
+        "order_total": "149.90",
+        "currency": "EUR",
+        "product_name": "Widget Pro",
+        "quantity": "2"
+    }
+}

@@ -1,0 +1,4 @@
+vendor/
+conf/config.php
+.env
+composer.lock

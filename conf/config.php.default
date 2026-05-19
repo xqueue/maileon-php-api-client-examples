@@ -1,0 +1,31 @@
+<?php
+
+// Copy to conf/config.php and fill in your values.
+// conf/config.php is gitignored.
+// Alternatively, set environment variables — they take precedence over this file.
+
+$config = [
+    'API_KEY'         => 'XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX',
+    'BASE_URI'        => 'https://api.maileon.com/1.0',
+    'THROW_EXCEPTION' => true,
+    'TIMEOUT'         => 30,
+    'DEBUG'           => false,
+];
+
+// Test contact data — these contacts will be created, modified, and deleted.
+$testdata = [
+    'email'               => 'php-api-test@example.com',
+    'email2'              => 'php-api-test-2@example.com',
+    'external_id'         => 'php-api-ext-001',
+    'external_id2'        => 'php-api-ext-002',
+
+    // Pre-existing objects required for some tests. Set to 0 to skip.
+    'mailing_id'          => 0,
+    'contact_filter_id'   => 0,
+    'blacklist_id'        => 0,
+    'doi_mailing_key'     => '',
+    'data_extension_id'   => 0,
+    'transaction_type_id' => 0,
+    'transaction_id'      => '',
+    'webhook_id'          => 0,
+];

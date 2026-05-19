@@ -1,0 +1,14 @@
+{
+    "email": "jane.doe@example.com",
+    "external_id": "jane-doe-001",
+    "permission": "doi_plus",
+    "standard_fields": {
+        "FIRSTNAME": "Jane",
+        "LASTNAME": "Doe",
+        "CITY": "Frankfurt",
+        "COUNTRY": "DE"
+    },
+    "custom_fields": {
+        "Newsletter_Source": "api-example"
+    }
+}
