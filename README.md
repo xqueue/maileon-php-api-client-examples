@@ -1,6 +1,41 @@
 # Maileon PHP API Client — Integration Tests & Examples
 
-Integration tests and a browser-based API playground for the [Maileon PHP API client](https://packagist.org/packages/xqueue/maileon-api-client).
+Integration tests and a browser-based API playground for the [Maileon PHP API client](https://packagist.org/packages/xqueue/maileon-api-client) ([source on GitHub](https://github.com/xqueue/maileon-php-api-client)).
+
+## Quick start
+
+### Native (PHP built-in server)
+
+Requires PHP 7.4+ and Composer on the host.
+
+```bash
+git clone https://github.com/xqueue/maileon-php-api-client-examples.git
+cd maileon-php-api-client-examples
+composer install
+php -S localhost:8000 -t ui/
+```
+
+Open `http://localhost:8000`.
+
+### Docker
+
+No PHP or Composer required on the host — only Docker.
+
+```bash
+git clone https://github.com/xqueue/maileon-php-api-client-examples.git
+cd maileon-php-api-client-examples
+docker compose up --build
+```
+
+Open `http://localhost:8080`.
+
+The `Dockerfile` uses the official `php:8.2-cli` image, installs Composer inside the container, runs `composer install`, and starts the PHP built-in server on port 8080.
+
+---
+
+After starting with either method, create a vault with a password and enter your Maileon API key in the **Configuration** section. All configuration is stored encrypted in a browser cookie — nothing is written to disk.
+
+For a production or shared server, point your web server's document root at the `ui/` directory instead of using the built-in PHP server.
 
 ## Requirements
 
@@ -29,16 +64,25 @@ cp .env.example .env
 
 A single-file browser-based API explorer. Select tests, override parameters per run, inspect requests and responses, and view the raw curl debug log — all without touching the CLI.
 
+It will also provide sample code in PHP, e.g.:
+
+![alt text](doc/img/example_code.png)
+
 ### Starting the UI
 
+**Native:**
 ```bash
-# Development server (PHP built-in)
 php -S localhost:8000 -t ui/
-
-# Or point your web server's document root at ui/
+# Open http://localhost:8000
 ```
 
-Open `http://localhost:8000` in your browser.
+**Docker** (no local PHP/Composer required):
+```bash
+docker compose up --build
+# Open http://localhost:8080
+```
+
+Or point any web server's document root at the `ui/` directory.
 
 ### First run — create a vault
 
@@ -78,6 +122,16 @@ The **Debug** tab shows the full curl session log with the Authorization header 
 
 ![List data extensions with debug log](<doc/img/example_call_list data extensions.png>)
 
+### PHP code snippets
+
+Every test entry has a `</>` button next to its label. Click it to open a modal with minimal, copy-pasteable PHP code for that specific API call.
+
+- Parameter values entered in the **Parameters** panel are pre-filled into the snippet.
+- The snippet includes all required `use` statements and a standard result-check block.
+- Click **Copy** to copy the code to the clipboard, or close the modal by clicking ✕ or anywhere outside it.
+
+This makes it straightforward to transfer a tested call directly into your own project without having to look up the method signature.
+
 ---
 
 ## Running the PHPUnit integration tests
@@ -112,7 +166,7 @@ Without `MAILEON_RUN_INTEGRATION=1`, all tests are marked as **skipped** — saf
 | MailingBlacklistsService  | CRUD, add entries, get entries                                                           |
 | AccountService            | info, placeholder CRUD, mailing domains                                                  |
 | WebhooksService           | list, get, create, update, delete                                                        |
-| DataExtensionsService     | list (paginated), get, get records (filtered, sorted), synchronize (UPSERT, INSERT_IGNORE_DUPLICATES), empty payload guard |
+| DataExtensionsService     | list (paginated), get data types, create, get, update (description + add fields), delete, synchronize records (UPSERT, INSERT_IGNORE_DUPLICATES), get records (filtered, sorted), delete all records, empty payload guard |
 
 ## Test data
 
@@ -140,4 +194,4 @@ The following operations affect **real account data** — review before running:
 - `TransactionsService`: creates transaction types and sends transactions
 - `MailingsService`: creates and deletes mailings
 - `BlacklistsService`: adds entries to a blacklist (requires `MAILEON_TEST_BLACKLIST_ID`)
-- `DataExtensionsService`: writes records to an existing data extension (requires `MAILEON_TEST_DE_ID`)
+- `DataExtensionsService`: creates and deletes a temporary data extension for CRUD tests; also writes records to an existing extension (requires `MAILEON_TEST_DE_ID`)

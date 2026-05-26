@@ -31,7 +31,7 @@ if (!$metaResp->isSuccess()) {
 }
 $ext = $metaResp->getResult();
 echo "# Data Extension: {$ext->name} (id={$id})\n";
-echo "# Fields: " . implode(', ', array_column((array)($ext->fields ?? []), 'name')) . "\n\n";
+echo "# Fields: " . implode(', ', array_column($ext->fields, 'name')) . "\n\n";
 
 // Fetch records.
 $response = $service->getDataExtensionRecords($id, 1, $pageSize, true, $fields);

@@ -18,6 +18,11 @@ declare(strict_types=1);
 //   php examples/run.php transactions:send   --data examples/data/transaction-order.json --confirm
 //   php examples/run.php dataextensions:list
 //   php examples/run.php dataextensions:records --id 42 --page-size 10
+//   php examples/run.php dataextensions:datatypes
+//   php examples/run.php dataextensions:create --name "My Extension" --confirm
+//   php examples/run.php dataextensions:update --id 42 --description "New desc" --confirm
+//   php examples/run.php dataextensions:delete --id 42 --confirm
+//   php examples/run.php dataextensions:delete-records --id 42 --confirm
 
 $commands = [
     'contacts:get'             => __DIR__ . '/contacts/get-contact.php',
@@ -29,8 +34,13 @@ $commands = [
     'reports:kpis'             => __DIR__ . '/reports/get-mailing-kpis.php',
     'transactions:create-type' => __DIR__ . '/transactions/create-transaction-type.php',
     'transactions:send'        => __DIR__ . '/transactions/send-transaction.php',
-    'dataextensions:list'      => __DIR__ . '/dataextensions/list-extensions.php',
-    'dataextensions:records'   => __DIR__ . '/dataextensions/get-records.php',
+    'dataextensions:list'           => __DIR__ . '/dataextensions/list-extensions.php',
+    'dataextensions:records'        => __DIR__ . '/dataextensions/get-records.php',
+    'dataextensions:datatypes'      => __DIR__ . '/dataextensions/get-datatypes.php',
+    'dataextensions:create'         => __DIR__ . '/dataextensions/create-extension.php',
+    'dataextensions:update'         => __DIR__ . '/dataextensions/update-extension.php',
+    'dataextensions:delete'         => __DIR__ . '/dataextensions/delete-extension.php',
+    'dataextensions:delete-records' => __DIR__ . '/dataextensions/delete-records.php',
 ];
 
 $safety = [
@@ -43,8 +53,13 @@ $safety = [
     'reports:kpis'             => 'read-only',
     'transactions:create-type' => 'write',
     'transactions:send'        => 'send',
-    'dataextensions:list'      => 'read-only',
-    'dataextensions:records'   => 'read-only',
+    'dataextensions:list'           => 'read-only',
+    'dataextensions:records'        => 'read-only',
+    'dataextensions:datatypes'      => 'read-only',
+    'dataextensions:create'         => 'write',
+    'dataextensions:update'         => 'write',
+    'dataextensions:delete'         => 'destructive',
+    'dataextensions:delete-records' => 'destructive',
 ];
 
 $command = $argv[1] ?? 'list';

@@ -303,6 +303,9 @@ input[type=text], input[type=password], input[type=number] {
     transition: border-color .15s; font-family: inherit; }
 input[type=text]:focus, input[type=password]:focus, input[type=number]:focus {
     outline: none; border-color: var(--accent); }
+textarea.body-ta { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 7px 10px; font-size: .78rem; width: 100%; box-sizing: border-box; font-family: var(--mono); resize: vertical; min-height: 150px; line-height: 1.5; transition: border-color .15s; }
+textarea.body-ta:focus { outline: none; border-color: var(--accent); }
+.form-group-full { grid-column: 1 / -1; }
 input[type=password] { font-family: var(--mono); letter-spacing: .1em; }
 .sensitive { font-family: var(--mono); letter-spacing: .08em; }
 
@@ -406,6 +409,35 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 .req-details[open] > summary .req-arrow { transform: rotate(90deg); }
 .req-details-body { padding: 8px; border-top: 1px solid var(--border); }
 
+/* ── Check-wrap (code-snippet button alongside each test) ── */
+.check-wrap { display: flex; align-items: center; }
+.check-wrap .check-item { flex: 1; min-width: 0; }
+.code-btn { background: rgba(92,124,250,.08); border: 1px solid var(--border); padding: 2px 7px;
+            color: var(--accent2); font-family: var(--mono); font-size: .72rem; cursor: pointer;
+            border-radius: 3px; flex-shrink: 0; opacity: .6; transition: opacity .1s, background .1s; }
+.code-btn:hover { opacity: 1; background: rgba(92,124,250,.18); }
+
+/* ── Code-snippet modal ── */
+#code-overlay { position: fixed; inset: 0; background: rgba(0,0,0,.58); z-index: 1000;
+                display: flex; align-items: center; justify-content: center; }
+#code-modal { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius);
+              padding: 20px; width: min(740px, calc(100vw - 32px)); max-height: 82vh;
+              display: flex; flex-direction: column; gap: 10px; box-shadow: 0 8px 32px rgba(0,0,0,.65); }
+#code-modal-pre { flex: 1; overflow-y: auto; background: var(--bg); border: 1px solid var(--border);
+                  border-radius: 4px; padding: 12px 14px; font-family: var(--mono); font-size: .78rem;
+                  white-space: pre; line-height: 1.6; min-height: 160px; }
+
+/* ── PHP syntax highlighting ── */
+.php-tag { color: #ff5370; }
+.php-kw  { color: #c792ea; }
+.php-lit { color: #f78c6c; }
+.php-cls { color: #ffcb6b; }
+.php-var { color: #82aaff; }
+.php-str { color: #c3e88d; }
+.php-num { color: #f78c6c; }
+.php-op  { color: #89ddff; }
+.php-cmt { color: #546e7a; font-style: italic; }
+
 /* ── Tooltip ── */
 .tip-wrap { position: relative; display: inline-block; }
 .tip-box  { display: none; position: absolute; bottom: calc(100% + 8px); left: 0;
@@ -427,6 +459,20 @@ hr.sep { border: none; border-top: 1px solid var(--border); margin: 14px 0; }
 </style>
 </head>
 <body>
+
+<!-- ── Code-snippet modal ──────────────────────────────────────────────── -->
+<div id="code-overlay" style="display:none" onclick="if(event.target===this)closeCodeModal()">
+    <div id="code-modal">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
+            <h4 style="font-size:.9rem;color:var(--accent2)" id="code-modal-title"></h4>
+            <div style="display:flex;gap:8px;align-items:center">
+                <button class="btn btn-outline btn-sm" onclick="copyCode()">Copy</button>
+                <button class="btn btn-outline btn-sm" onclick="closeCodeModal()" title="Close">✕</button>
+            </div>
+        </div>
+        <pre id="code-modal-pre"></pre>
+    </div>
+</div>
 
 <?php if (!$authed): ?>
 <!-- ── LOGIN ─────────────────────────────────────────────────────────────── -->
@@ -550,8 +596,8 @@ $allTests = [
     ['pref_delete',     'Delete preference',           'destroy','contacts'],
 
     // Contact filters
-    ['cf_count',   'Count',          'read',    'contactfilters'],
-    ['cf_list',    'List',           'read',    'contactfilters'],
+    ['cf_count',   'Count',            'read',    'contactfilters'],
+    ['cf_list',    'List (paginated)', 'read',    'contactfilters'],
     ['cf_get',     'Get (config ID)','read',    'contactfilters'],
     ['cf_create',  'Create',         'write',   'contactfilters'],
     ['cf_update',  'Update name',    'write',   'contactfilters'],
@@ -559,15 +605,15 @@ $allTests = [
     ['cf_delete',  'Delete created', 'destroy', 'contactfilters'],
 
     // Target groups
-    ['tg_count',  'Count',   'read',    'targetgroups'],
-    ['tg_list',   'List',    'read',    'targetgroups'],
+    ['tg_count',  'Count',            'read',    'targetgroups'],
+    ['tg_list',   'List (paginated)', 'read',    'targetgroups'],
     ['tg_create', 'Create',  'write',   'targetgroups'],
     ['tg_get',    'Get',     'read',    'targetgroups'],
     ['tg_delete', 'Delete',  'destroy', 'targetgroups'],
 
     // Mailings – read
-    ['mail_list',       'List (by type)',        'read',  'mailings'],
-    ['mail_list_state', 'List (by state)',       'read',  'mailings'],
+    ['mail_list',       'List by type (paginated)',  'read',  'mailings'],
+    ['mail_list_state', 'List by state (paginated)', 'read',  'mailings'],
     ['mail_subject',    'Get subject',           'read',  'mailings'],
     ['mail_sender',     'Get sender',            'read',  'mailings'],
     ['mail_sender_alias','Get sender alias',     'read',  'mailings'],
@@ -619,8 +665,8 @@ $allTests = [
     ['rep_uniq_conv',    'Unique conversions', 'read', 'reports'],
 
     // Transactions
-    ['tx_type_count',  'Type count',          'read',    'transactions'],
-    ['tx_type_list',   'Type list',           'read',    'transactions'],
+    ['tx_type_count',  'Type count',            'read',    'transactions'],
+    ['tx_type_list',   'Type list (paginated)', 'read',    'transactions'],
     ['tx_type_get',    'Get type (config ID)','read',    'transactions'],
     ['tx_type_create', 'Create type',         'write',   'transactions'],
     ['tx_type_create2','Create complex type', 'write',   'transactions'],
@@ -663,16 +709,21 @@ $allTests = [
     ['wh_delete', 'Delete created',  'destroy', 'webhooks'],
 
     // Data Extensions
-    ['de_list',             'List extensions',        'read',  'dataextensions'],
-    ['de_list_paged',       'List (page 2)',          'read',  'dataextensions'],
-    ['de_get',              'Get extension',          'read',  'dataextensions'],
-    ['de_get_fields',       'Verify fields',          'read',  'dataextensions'],
-    ['de_records',          'Get records',            'read',  'dataextensions'],
-    ['de_records_desc',     'Get records (desc)',     'read',  'dataextensions'],
-    ['de_records_filtered', 'Get records (filtered)', 'read',  'dataextensions'],
-    ['de_sync_upsert',      'Sync UPSERT',            'write', 'dataextensions'],
-    ['de_sync_insert_ign',  'Sync INSERT_IGNORE',     'write', 'dataextensions'],
-    ['de_sync_empty',       'Sync empty (guard)',      'read',  'dataextensions'],
+    ['de_datatypes',        'Get data types',                                    'read',    'dataextensions'],
+    ['de_list',             'List extensions',                                   'read',    'dataextensions'],
+    ['de_list_paged',       'List extensions (page 2)',                          'read',    'dataextensions'],
+    ['de_create',           'Create extension',                                  'write',   'dataextensions'],
+    ['de_get',              'Get extension',                                     'read',    'dataextensions'],
+    ['de_get_fields',       'Get extension fields',                              'read',    'dataextensions'],
+    ['de_update',           'Update extension',                                  'write',   'dataextensions'],
+    ['de_records',          'Get records',                                       'read',    'dataextensions'],
+    ['de_records_desc',     'Get records (desc)',                                'read',    'dataextensions'],
+    ['de_records_filtered', 'Get records (filtered)',                            'read',    'dataextensions'],
+    ['de_sync_upsert',      'Synchronize records (UPSERT)',                      'write',   'dataextensions'],
+    ['de_sync_insert_ign',  'Synchronize records (INSERT_IGNORE_DUPLICATES)',    'write',   'dataextensions'],
+    ['de_delete_records',   'Delete all records',                                'destroy', 'dataextensions'],
+    ['de_sync_empty',       'Synchronize records (empty payload)',               'read',    'dataextensions'],
+    ['de_delete',           'Delete extension',                                  'destroy', 'dataextensions'],
 ];
 
 $sections = [
@@ -843,10 +894,9 @@ $sectionLabel = $sections[$activeSection] ?? $activeSection;
 <div class="topbar">
     <h2><?= htmlspecialchars($sectionLabel) ?> Tests</h2>
     <div class="topbar-actions">
-        <button class="btn btn-outline btn-sm" onclick="selectAll(true)">Select all</button>
-        <button class="btn btn-outline btn-sm" onclick="selectAll(false)">Clear</button>
+        <button class="btn btn-outline btn-sm" onclick="clearSelection()">Deselect</button>
         <button class="btn btn-primary" id="run-btn" onclick="runTests()">
-            <span id="run-label">Run selected</span>
+            <span id="run-label">Run</span>
         </button>
     </div>
 </div>
@@ -870,11 +920,14 @@ $sectionLabel = $sections[$activeSection] ?? $activeSection;
         <?php foreach ($testsInSection as $test): ?>
             <?php [$key, $label, $safety, ] = $test; ?>
             <?php [$badgeText, $badgeClass] = $safetyBadge[$safety] ?? ['?', '']; ?>
-            <label class="check-item">
-                <input type="checkbox" name="test" value="<?= htmlspecialchars($key) ?>">
-                <span><?= htmlspecialchars($label) ?></span>
-                <span class="badge <?= $badgeClass ?>"><?= $badgeText ?></span>
-            </label>
+            <div class="check-wrap">
+                <label class="check-item">
+                    <input type="radio" name="test" value="<?= htmlspecialchars($key) ?>" onchange="updateParamsPanel()">
+                    <span><?= htmlspecialchars($label) ?></span>
+                    <span class="badge <?= $badgeClass ?>"><?= $badgeText ?></span>
+                </label>
+                <button type="button" class="code-btn" onclick="showCode('<?= htmlspecialchars($key, ENT_QUOTES) ?>')" title="Show PHP snippet">&lt;/&gt;</button>
+            </div>
         <?php endforeach; ?>
         </div>
         <?php if ($activeSection === 'reports' || $activeSection === 'blacklists' || $activeSection === 'dataextensions'): ?>
@@ -898,7 +951,7 @@ $sectionLabel = $sections[$activeSection] ?? $activeSection;
     </div>
     <div class="panel-body">
         <div class="output-panel" id="output">
-            <span style="color:var(--muted)">Select tests and click "Run selected".</span>
+            <span style="color:var(--muted)">Select a test and click "Run".</span>
         </div>
     </div>
 </div>
@@ -934,6 +987,35 @@ const VAULT_PARAMS = <?= json_encode([
     'mbl_name'       => 'php-ui-test-mbl',
     'tx_type_name'   => 'php_ui_test_type',
     'tx_type_name2'  => 'php_ui_test_type2',
+    'page_index'     => '1',
+    'page_size'      => '100',
+    'de_create_body' => json_encode([
+        'name'                => 'my_extension',
+        'description'         => 'Description',
+        'retention_policy'    => 'RECORDS_DURATION',
+        'delete_interval'     => 7,
+        'delete_interval_unit'=> 'DAYS',
+        'fields'              => [
+            ['name' => 'id',    'description' => 'A unique ID',                        'nullable' => false, 'unique_identifier' => true,  'data_type' => 'integer'],
+            ['name' => 'email', 'description' => "The contact's email address",        'nullable' => false, 'unique_identifier' => true,  'data_type' => 'contact_email'],
+            ['name' => 'text',  'description' => 'Some description for this field',    'nullable' => true,  'unique_identifier' => false, 'data_type' => 'string', 'default_value' => 'lorem ipsum'],
+        ],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+    'de_update_body' => json_encode([
+        'description' => 'Updated description',
+        'fields'      => [
+            ['name' => 'score', 'data_type' => 'integer', 'nullable' => true],
+        ],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+    'de_sync_body'   => json_encode([
+        ['id' => 1, 'email' => 'alice@example.com', 'text' => 'First row'],
+        ['id' => 2, 'email' => 'bob@example.com',   'text' => 'Second row'],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+    'contact_body'   => json_encode([
+        'permission'      => 'doi',
+        'standard_fields' => ['FIRSTNAME' => 'John', 'LASTNAME' => 'Doe'],
+        'custom_fields'   => [],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
 ], JSON_HEX_TAG|JSON_HEX_AMP) ?>;
 const PARAM_LABELS = {
     test_email:        'Test email',
@@ -958,92 +1040,127 @@ const PARAM_LABELS = {
     mbl_name:          'Mailing blacklist name',
     tx_type_name:      'Transaction type name',
     tx_type_name2:     'Transaction type name 2',
+    page_index:        'Page index',
+    page_size:         'Page size',
+    de_create_body:    'Extension definition (JSON)',
+    de_update_body:    'Update payload (JSON)',
+    de_sync_body:      'Records (JSON array)',
+    contact_body:      'Contact fields (JSON)',
 };
+// Each entry: { r: [...required params], o: [...optional params] }
+// Required = test skips/fails without it and has no session fallback.
+// Optional = has a sensible default, a session carry-over, or a hardcoded fallback.
 const TEST_PARAMS = {
-    contact_get_by_email:      ['test_email'],
-    contact_get_by_ext_id:     ['test_external_id'],
-    contact_create:            ['test_email', 'test_external_id'],
-    contact_create_ext_id:     ['test_email2', 'test_external_id2'],
-    contact_update:            ['test_email'],
-    contact_sync:              ['test_email'],
-    contact_unsubscribe_email: ['test_email'],
-    contact_delete:            ['test_email'],
-    contact_delete_ext_id:     ['test_external_id2'],
-    cf_get:                    ['test_cf_id'],
-    cf_refresh:                ['test_cf_id'],
-    mail_subject:              ['test_mailing_id'],
-    mail_sender:               ['test_mailing_id'],
-    mail_sender_alias:         ['test_mailing_id'],
-    mail_replyto:              ['test_mailing_id'],
-    mail_preview:              ['test_mailing_id'],
-    mail_tags:                 ['test_mailing_id'],
-    mail_locale:               ['test_mailing_id'],
-    mail_html:                 ['test_mailing_id'],
-    mail_archive_url:          ['test_mailing_id'],
-    mail_report_url:           ['test_mailing_id'],
-    mail_domain:               ['test_mailing_id'],
-    mail_state:                ['test_mailing_id'],
-    mail_type:                 ['test_mailing_id'],
-    mail_cf_restrictions:      ['test_mailing_id'],
-    mail_custom_props:         ['test_mailing_id'],
-    mail_copy:                 ['test_mailing_id'],
-    mail_set_sender:           ['test_email'],
-    mail_set_replyto:          ['test_email'],
-    rep_recipients:            ['test_mailing_id'],
-    rep_opens:                 ['test_mailing_id'],
-    rep_unique_opens:          ['test_mailing_id'],
-    rep_clicks:                ['test_mailing_id'],
-    rep_unique_clicks:         ['test_mailing_id'],
-    rep_bounces:               ['test_mailing_id'],
-    rep_unique_bounces:        ['test_mailing_id'],
-    rep_unsubs:                ['test_mailing_id'],
-    rep_subscribers:           ['test_mailing_id'],
-    rep_blocks:                ['test_mailing_id'],
-    rep_conversions:           ['test_mailing_id'],
-    rep_uniq_conv:             ['test_mailing_id'],
-    tx_type_get:               ['test_tx_type_id'],
-    tx_send:                   ['test_tx_type_id', 'test_email'],
-    tx_send_multi:             ['test_tx_type_id', 'test_email'],
-    tx_recent:                 ['test_tx_type_id'],
-    tx_get:                    ['test_tx_type_id', 'test_tx_id'],
-    tx_delete:                 ['test_tx_type_id', 'test_tx_id'],
-    tx_delete_by_date:         ['test_tx_type_id'],
-    bl_get:                    ['test_blacklist_id'],
-    bl_entries:                ['test_blacklist_id'],
-    de_get:                    ['test_de_id'],
-    de_get_fields:             ['test_de_id'],
-    de_records:                ['test_de_id'],
-    de_records_desc:           ['test_de_id'],
-    de_records_filtered:       ['test_de_id'],
-    de_sync_upsert:            ['test_de_id'],
-    de_sync_insert_ign:        ['test_de_id'],
-    wh_get:                    ['test_webhook_id'],
-    tg_create:                 ['tg_name'],
-    cf_create:                 ['cf_filter_name'],
-    cf_update:                 ['cf_filter_name'],
-    mail_create:               ['mail_name', 'mail_subject'],
-    mail_exists:               ['mail_name'],
-    pref_cat_create:           ['pref_cat_name'],
-    pref_cat_get:              ['pref_cat_name'],
-    pref_cat_update:           ['pref_cat_name'],
-    pref_cat_delete:           ['pref_cat_name'],
-    pref_list:                 ['pref_cat_name'],
-    pref_create:               ['pref_cat_name', 'pref_name'],
-    pref_get:                  ['pref_cat_name', 'pref_name'],
-    pref_update:               ['pref_cat_name', 'pref_name'],
-    pref_delete:               ['pref_cat_name', 'pref_name'],
-    contact_create_custom_field:   ['cf_field_name'],
-    contact_rename_custom_field:   ['cf_field_name'],
-    contact_del_custom_field_vals: ['cf_field_name'],
-    contact_del_custom_field:      ['cf_field_name'],
-    mbl_create:                ['mbl_name'],
-    wh_create:                 ['webhook_url'],
-    tx_type_create:            ['tx_type_name'],
-    tx_type_create2:           ['tx_type_name2'],
+    // ── Contacts ─────────────────────────────────────────────────────────────
+    contact_get_by_email:          { r: ['test_email'],                               o: [] },
+    contact_get_by_ext_id:         { r: ['test_external_id'],                         o: [] },
+    contact_list:                  { r: [],                                            o: ['page_index', 'page_size'] },
+    contact_list_update_after:     { r: [],                                            o: ['page_index', 'page_size'] },
+    contact_create:                { r: ['test_email'],                               o: ['test_external_id', 'contact_body'] },
+    contact_create_ext_id:         { r: ['test_email2', 'test_external_id2'],         o: ['contact_body'] },
+    contact_update:                { r: ['test_email'],                               o: ['contact_body'] },
+    contact_sync:                  { r: ['test_email'],                               o: ['contact_body'] },
+    contact_unsubscribe_email:     { r: ['test_email'],                               o: [] },
+    contact_delete:                { r: ['test_email'],                               o: [] },
+    contact_delete_ext_id:         { r: ['test_external_id2'],                        o: [] },
+    contact_create_custom_field:   { r: ['cf_field_name'],                            o: [] },
+    contact_rename_custom_field:   { r: ['cf_field_name'],                            o: [] },
+    contact_del_custom_field_vals: { r: ['cf_field_name'],                            o: [] },
+    contact_del_custom_field:      { r: ['cf_field_name'],                            o: [] },
+    // ── Preference categories ─────────────────────────────────────────────────
+    pref_cat_create:               { r: ['pref_cat_name'],                            o: [] },
+    pref_cat_get:                  { r: ['pref_cat_name'],                            o: [] },
+    pref_cat_update:               { r: ['pref_cat_name'],                            o: [] },
+    pref_cat_delete:               { r: ['pref_cat_name'],                            o: [] },
+    pref_list:                     { r: ['pref_cat_name'],                            o: [] },
+    pref_create:                   { r: ['pref_cat_name', 'pref_name'],               o: [] },
+    pref_get:                      { r: ['pref_cat_name', 'pref_name'],               o: [] },
+    pref_update:                   { r: ['pref_cat_name', 'pref_name'],               o: [] },
+    pref_delete:                   { r: ['pref_cat_name', 'pref_name'],               o: [] },
+    // ── Contact filters ───────────────────────────────────────────────────────
+    cf_list:                       { r: [],                                            o: ['page_index', 'page_size'] },
+    cf_get:                        { r: [],                                            o: ['test_cf_id'] },
+    cf_refresh:                    { r: [],                                            o: ['test_cf_id'] },
+    cf_create:                     { r: ['cf_filter_name'],                           o: [] },
+    cf_update:                     { r: ['cf_filter_name'],                           o: [] },
+    // ── Target groups ─────────────────────────────────────────────────────────
+    tg_list:                       { r: [],                                            o: ['page_index', 'page_size'] },
+    tg_create:                     { r: ['tg_name'],                                   o: [] },
+    // ── Mailings – read (test_mailing_id optional: has $st session fallback) ──
+    mail_list:                     { r: [],                                            o: ['page_index', 'page_size'] },
+    mail_list_state:               { r: [],                                            o: ['page_index', 'page_size'] },
+    mail_subject:                  { r: [],                                            o: ['test_mailing_id'] },
+    mail_sender:                   { r: [],                                            o: ['test_mailing_id'] },
+    mail_sender_alias:             { r: [],                                            o: ['test_mailing_id'] },
+    mail_replyto:                  { r: [],                                            o: ['test_mailing_id'] },
+    mail_preview:                  { r: [],                                            o: ['test_mailing_id'] },
+    mail_tags:                     { r: [],                                            o: ['test_mailing_id'] },
+    mail_locale:                   { r: [],                                            o: ['test_mailing_id'] },
+    mail_html:                     { r: [],                                            o: ['test_mailing_id'] },
+    mail_archive_url:              { r: [],                                            o: ['test_mailing_id'] },
+    mail_report_url:               { r: [],                                            o: ['test_mailing_id'] },
+    mail_domain:                   { r: [],                                            o: ['test_mailing_id'] },
+    mail_state:                    { r: [],                                            o: ['test_mailing_id'] },
+    mail_type:                     { r: [],                                            o: ['test_mailing_id'] },
+    mail_cf_restrictions:          { r: [],                                            o: ['test_mailing_id'] },
+    mail_custom_props:             { r: [],                                            o: ['test_mailing_id'] },
+    mail_copy:                     { r: [],                                            o: ['test_mailing_id'] },
+    mail_exists:                   { r: ['mail_name'],                                 o: [] },
+    mail_create:                   { r: ['mail_name', 'mail_subject'],                 o: [] },
+    mail_set_sender:               { r: [],                                            o: ['test_email'] },
+    mail_set_replyto:              { r: [],                                            o: ['test_email'] },
+    // ── Reports (test_mailing_id required: no session fallback) ───────────────
+    rep_recipients:                { r: ['test_mailing_id'],                           o: [] },
+    rep_opens:                     { r: ['test_mailing_id'],                           o: [] },
+    rep_unique_opens:              { r: ['test_mailing_id'],                           o: [] },
+    rep_clicks:                    { r: ['test_mailing_id'],                           o: [] },
+    rep_unique_clicks:             { r: ['test_mailing_id'],                           o: [] },
+    rep_bounces:                   { r: ['test_mailing_id'],                           o: [] },
+    rep_unique_bounces:            { r: ['test_mailing_id'],                           o: [] },
+    rep_unsubs:                    { r: ['test_mailing_id'],                           o: [] },
+    rep_subscribers:               { r: ['test_mailing_id'],                           o: [] },
+    rep_blocks:                    { r: ['test_mailing_id'],                           o: [] },
+    rep_conversions:               { r: ['test_mailing_id'],                           o: [] },
+    rep_uniq_conv:                 { r: ['test_mailing_id'],                           o: [] },
+    // ── Transactions ──────────────────────────────────────────────────────────
+    tx_type_list:                  { r: [],                                            o: ['page_index', 'page_size'] },
+    tx_type_get:                   { r: ['test_tx_type_id'],                           o: [] },
+    tx_send:                       { r: ['test_email'],                               o: ['test_tx_type_id'] },
+    tx_send_multi:                 { r: ['test_email'],                               o: ['test_tx_type_id'] },
+    tx_recent:                     { r: [],                                            o: ['test_tx_type_id'] },
+    tx_get:                        { r: ['test_tx_type_id', 'test_tx_id'],             o: [] },
+    tx_delete:                     { r: ['test_tx_type_id', 'test_tx_id'],             o: [] },
+    tx_delete_by_date:             { r: [],                                            o: ['test_tx_type_id'] },
+    tx_type_create:                { r: ['tx_type_name'],                              o: [] },
+    tx_type_create2:               { r: ['tx_type_name2'],                             o: [] },
+    // ── Blacklists ────────────────────────────────────────────────────────────
+    bl_get:                        { r: ['test_blacklist_id'],                         o: [] },
+    bl_entries:                    { r: ['test_blacklist_id'],                         o: [] },
+    // ── Mailing blacklists ────────────────────────────────────────────────────
+    mbl_create:                    { r: ['mbl_name'],                                  o: [] },
+    // ── Webhooks ──────────────────────────────────────────────────────────────
+    wh_get:                        { r: ['test_webhook_id'],                           o: [] },
+    wh_create:                     { r: [],                                            o: ['webhook_url'] },
+    // ── Data extensions ───────────────────────────────────────────────────────
+    de_list:                       { r: [],                                            o: ['page_index', 'page_size'] },
+    de_list_paged:                 { r: [],                                            o: ['page_index', 'page_size'] },
+    de_create:                     { r: [],                                            o: ['de_create_body'] },
+    de_get:                        { r: ['test_de_id'],                                o: [] },
+    de_get_fields:                 { r: ['test_de_id'],                                o: [] },
+    de_update:                     { r: [],                                            o: ['test_de_id', 'de_update_body'] },
+    de_records:                    { r: ['test_de_id'],                                o: ['page_index', 'page_size'] },
+    de_records_desc:               { r: ['test_de_id'],                                o: ['page_index', 'page_size'] },
+    de_records_filtered:           { r: ['test_de_id'],                                o: ['page_index', 'page_size'] },
+    de_sync_upsert:                { r: ['test_de_id'],                                o: ['de_sync_body'] },
+    de_sync_insert_ign:            { r: ['test_de_id'],                                o: ['de_sync_body'] },
+    de_sync_empty:                 { r: ['test_de_id'],                                o: [] },
+    de_delete_records:             { r: ['test_de_id'],                                o: [] },
+    de_delete:                     { r: [],                                            o: ['test_de_id'] },
 };
 
-function selectAll(v) {
-    document.querySelectorAll('#test-checks input').forEach(c => c.checked = v);
+function clearSelection() {
+    document.querySelectorAll('#test-checks input').forEach(c => c.checked = false);
+    updateParamsPanel();
 }
 
 function clearOutput() {
@@ -1052,7 +1169,7 @@ function clearOutput() {
 
 async function runTests() {
     const checks = [...document.querySelectorAll('#test-checks input:checked')].map(c => c.value);
-    if (!checks.length) { alert('No tests selected.'); return; }
+    if (!checks.length) { alert('No test selected.'); return; }
 
     const btn   = document.getElementById('run-btn');
     const label = document.getElementById('run-label');
@@ -1062,7 +1179,7 @@ async function runTests() {
     document.getElementById('output').innerHTML = '';
 
     const allNeeded = new Set();
-    checks.forEach(key => (TEST_PARAMS[key] || []).forEach(p => allNeeded.add(p)));
+    checks.forEach(key => { const d = TEST_PARAMS[key] || {}; [...(d.r || []), ...(d.o || [])].forEach(p => allNeeded.add(p)); });
     const paramParts = [...allNeeded].map(p => {
         const el = document.getElementById('param-' + p);
         return el ? 'params%5B' + encodeURIComponent(p) + '%5D=' + encodeURIComponent(el.value) : '';
@@ -1079,7 +1196,7 @@ async function runTests() {
     const data = await resp.json().catch(() => ({ error: 'Invalid response from server.' }));
 
     btn.classList.remove('dim');
-    label.textContent = 'Run selected';
+    label.textContent = 'Run';
 
     if (data.error) {
         document.getElementById('output').innerHTML = `<span style="color:var(--error)">${escHtml(data.error)}</span>`;
@@ -1129,6 +1246,9 @@ async function runTests() {
                 ['Raw',     `<pre class="hdr-pre">${escHtml(result.body ?? '(empty)')}</pre>`],
                 ['Headers', `<pre class="hdr-pre">${renderHeaderRows(result.res_headers)}</pre>`],
             ];
+            if (result.toString_result != null) {
+                tabDefs.push(['ToString', `<pre class="hdr-pre">${escHtml(result.toString_result)}</pre>`]);
+            }
             if (result.debug_log) {
                 tabDefs.push(['Debug', `<pre class="hdr-pre">${escHtml(result.debug_log)}</pre>`]);
             }
@@ -1158,35 +1278,63 @@ async function runTests() {
 }
 
 function updateParamsPanel() {
-    const ORDER   = ['test_email','test_email2','test_external_id','test_external_id2',
-                     'test_mailing_id','test_cf_id','test_blacklist_id','test_de_id',
-                     'test_tx_type_id','test_tx_id','test_webhook_id',
-                     'tg_name','mail_name','mail_subject','cf_filter_name',
-                     'pref_cat_name','pref_name','cf_field_name','mbl_name',
-                     'webhook_url','tx_type_name','tx_type_name2'];
-    const checked = [...document.querySelectorAll('#test-checks input:checked')].map(c => c.value);
-    const seen    = new Set();
-    checked.forEach(key => (TEST_PARAMS[key] || []).forEach(p => seen.add(p)));
-    const needed  = ORDER.filter(p => seen.has(p));
+    const ORDER = ['test_email','test_email2','test_external_id','test_external_id2',
+                   'test_mailing_id','test_cf_id','test_blacklist_id','test_de_id',
+                   'test_tx_type_id','test_tx_id','test_webhook_id',
+                   'page_index','page_size',
+                   'tg_name','mail_name','mail_subject','cf_filter_name',
+                   'pref_cat_name','pref_name','cf_field_name','mbl_name',
+                   'webhook_url','tx_type_name','tx_type_name2',
+                   'de_create_body','de_update_body','de_sync_body','contact_body'];
+    const checked  = [...document.querySelectorAll('#test-checks input:checked')].map(c => c.value);
+    const seen     = new Set();
+    const required = new Set();
+    checked.forEach(key => {
+        const d = TEST_PARAMS[key] || {};
+        (d.r || []).forEach(p => { seen.add(p); required.add(p); });
+        (d.o || []).forEach(p => seen.add(p));
+    });
+    const needed = ORDER.filter(p => seen.has(p));
 
     const panel = document.getElementById('params-panel');
     const body  = document.getElementById('params-body');
     if (!panel) return;
     if (!needed.length) { panel.style.display = 'none'; return; }
 
-    // Preserve values already typed
+    // Preserve values already typed in this session
     const current = {};
     needed.forEach(p => { const el = document.getElementById('param-' + p); if (el) current[p] = el.value; });
 
     panel.style.display = '';
     body.innerHTML = '<div class="form-row">' +
         needed.map(p => {
-            const label = PARAM_LABELS[p] || p;
-            const dflt  = VAULT_PARAMS[p] ?? '';
-            const val   = current[p] !== undefined ? current[p] : dflt;
+            const labelText = PARAM_LABELS[p] || p;
+            const dflt      = VAULT_PARAMS[p] ?? '';
+            const val       = current[p] !== undefined ? current[p] : dflt;
+            const isBody    = p.endsWith('_body');
+            const req       = required.has(p);
+            const isEmpty   = val === '' || val === '0';
+
+            const reqMark = req
+                ? `<span style="color:var(--error);margin-left:3px" title="Required — test skips without this">*</span>`
+                : `<span style="color:var(--muted);font-size:.7rem;margin-left:5px">opt</span>`;
+            const configLink = (req && isEmpty)
+                ? `<a href="?section=__config" style="color:var(--accent2);font-size:.7rem;margin-left:8px">→ Configure</a>`
+                : '';
+            const labelHtml = `${escHtml(labelText)}${reqMark}${configLink}`
+                + `<span style="color:var(--muted);font-size:.7rem;margin-left:6px">${escHtml(p)}</span>`;
+
+            if (isBody) {
+                return `<div class="form-group form-group-full">
+                    <label>${labelHtml}</label>
+                    <textarea id="param-${escHtml(p)}" class="body-ta" spellcheck="false">${escHtml(val)}</textarea>
+                </div>`;
+            }
+            const inputStyle = (req && isEmpty) ? ' style="border-color:rgba(255,107,107,.5)"' : '';
             return `<div class="form-group">
-                <label>${escHtml(label)}<span style="color:var(--muted);font-size:.72rem;margin-left:5px">${escHtml(p)}</span></label>
-                <input type="text" id="param-${escHtml(p)}" value="${escHtml(val)}" placeholder="${escHtml(dflt || 'not set')}">
+                <label>${labelHtml}</label>
+                <input type="text" id="param-${escHtml(p)}" value="${escHtml(val)}"
+                       placeholder="${escHtml(dflt || 'not set')}"${inputStyle}>
             </div>`;
         }).join('') + '</div>';
 }
@@ -1259,6 +1407,621 @@ function switchTab(prefix, idx, el) {
 
 function escHtml(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Code-snippet modal ─────────────────────────────────────────────────────
+
+function closeCodeModal() {
+    document.getElementById('code-overlay').style.display = 'none';
+}
+
+function copyCode() {
+    const pre = document.getElementById('code-modal-pre');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent).catch(() => {
+        const ta = document.createElement('textarea');
+        ta.value = pre.textContent;
+        document.body.appendChild(ta); ta.select(); document.execCommand('copy'); ta.remove();
+    });
+}
+
+// Collect current param values (panel values override vault defaults)
+function _collectParams() {
+    const p = Object.assign({}, VAULT_PARAMS);
+    document.querySelectorAll('[id^="param-"]').forEach(el => {
+        p[el.id.replace(/^param-/, '')] = el.value;
+    });
+    return p;
+}
+
+// Helper: PHP var representation
+function _phpVal(v) {
+    if (v === '' || v === null || v === undefined) return 'null';
+    if (!isNaN(v) && v !== '') return String(+v);
+    return "'" + String(v).replace(/'/g, "\\'") + "'";
+}
+
+// Namespace shortcuts used in templates
+const NS = {
+    PING:        'de\\xqueue\\maileon\\api\\client\\utils\\PingService',
+    CONTACT:     'de\\xqueue\\maileon\\api\\client\\contacts\\ContactsService',
+    CONTACT_OBJ: 'de\\xqueue\\maileon\\api\\client\\contacts\\Contact',
+    PERMISSION:  'de\\xqueue\\maileon\\api\\client\\contacts\\Permission',
+    SYNC_MODE:   'de\\xqueue\\maileon\\api\\client\\contacts\\SynchronizationMode',
+    STD_FIELD:   'de\\xqueue\\maileon\\api\\client\\contacts\\StandardContactField',
+    PREF_CAT:    'de\\xqueue\\maileon\\api\\client\\contacts\\PreferenceCategory',
+    PREF:        'de\\xqueue\\maileon\\api\\client\\contacts\\Preference',
+    CF:          'de\\xqueue\\maileon\\api\\client\\contactfilters\\ContactfiltersService',
+    CF_OBJ:      'de\\xqueue\\maileon\\api\\client\\contactfilters\\ContactFilter',
+    TG:          'de\\xqueue\\maileon\\api\\client\\targetgroups\\TargetGroupsService',
+    TG_OBJ:      'de\\xqueue\\maileon\\api\\client\\targetgroups\\TargetGroup',
+    MAIL:        'de\\xqueue\\maileon\\api\\client\\mailings\\MailingsService',
+    CUSTOM_PROP: 'de\\xqueue\\maileon\\api\\client\\mailings\\CustomProperty',
+    MEDIA:       'de\\xqueue\\maileon\\api\\client\\media\\MediaService',
+    REP:         'de\\xqueue\\maileon\\api\\client\\reports\\ReportsService',
+    TX:          'de\\xqueue\\maileon\\api\\client\\transactions\\TransactionsService',
+    TX_TYPE:     'de\\xqueue\\maileon\\api\\client\\transactions\\TransactionType',
+    TX_OBJ:      'de\\xqueue\\maileon\\api\\client\\transactions\\Transaction',
+    CONTACT_REF: 'de\\xqueue\\maileon\\api\\client\\transactions\\ContactReference',
+    ATTR_TYPE:   'de\\xqueue\\maileon\\api\\client\\transactions\\AttributeType',
+    DATA_TYPE:   'de\\xqueue\\maileon\\api\\client\\transactions\\DataType',
+    BL:          'de\\xqueue\\maileon\\api\\client\\blacklists\\BlacklistsService',
+    MBL:         'de\\xqueue\\maileon\\api\\client\\blacklists\\mailings\\MailingBlacklistsService',
+    MBL_EXPR:    'de\\xqueue\\maileon\\api\\client\\blacklists\\mailings\\MailingBlacklistExpressions',
+    ACC:         'de\\xqueue\\maileon\\api\\client\\account\\AccountService',
+    ACC_PH:      'de\\xqueue\\maileon\\api\\client\\account\\AccountPlaceholder',
+    WH:          'de\\xqueue\\maileon\\api\\client\\webhooks\\WebhooksService',
+    WH_OBJ:      'de\\xqueue\\maileon\\api\\client\\webhooks\\Webhook',
+    DE:          'de\\xqueue\\maileon\\api\\client\\dataextensions\\DataExtensionsService',
+    DE_EXT:      'de\\xqueue\\maileon\\api\\client\\dataextensions\\DataExtension',
+    DE_FLD:      'de\\xqueue\\maileon\\api\\client\\dataextensions\\DataExtensionField',
+    DE_REC:      'de\\xqueue\\maileon\\api\\client\\dataextensions\\DataExtensionRecord',
+};
+
+function _tpl(uses, call) { return { uses, call }; }
+
+// CODE_TEMPLATES: each entry is (params) => { uses: string[], call: string }
+const CODE_TEMPLATES = {
+    // Ping
+    ping_get:    p => _tpl([NS.PING], '$svc = new PingService($config);\n$resp = $svc->pingGet();'),
+    ping_put:    p => _tpl([NS.PING], '$svc = new PingService($config);\n$resp = $svc->pingPut();'),
+    ping_post:   p => _tpl([NS.PING], '$svc = new PingService($config);\n$resp = $svc->pingPost();'),
+    ping_delete: p => _tpl([NS.PING], '$svc = new PingService($config);\n$resp = $svc->pingDelete();'),
+    // Contacts
+    contact_count:           p => _tpl([NS.CONTACT], '$svc = new ContactsService($config);\n$resp = $svc->getContactsCount();'),
+    contact_get_by_email:    p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->getContactByEmail(${_phpVal(p.test_email)});`),
+    contact_get_by_ext_id:   p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->getContactsByExternalId(${_phpVal(p.test_external_id)});`),
+    contact_list:            p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->getContacts(${+p.page_index||1}, ${+p.page_size||100});`),
+    contact_list_update_after: p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$ago30d = strtotime('-30 days') * 1000;\n$resp = $svc->getContacts(${+p.page_index||1}, ${+p.page_size||100}, [], [], $ago30d);`),
+    contact_delete:          p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->deleteContactByEmail(${_phpVal(p.test_email)});`),
+    contact_unsubscribe_email: p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->unsubscribeContactByEmail(${_phpVal(p.test_email)});`),
+    // Reports
+    rep_recipients:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getRecipientsCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_opens:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getOpensCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_unique_opens: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueOpensCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_clicks:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getClicksCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_unique_clicks: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueClicksCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_bounces:       p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBouncesCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_unsubs:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUnsubscribersCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_subscribers:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getSubscribersCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_blocks:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBlocksCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_conversions:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getConversionsCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_uniq_conv:     p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueConversionsCount(null, null, [${+p.test_mailing_id||0}]);`),
+    rep_unsub_reasons: p => _tpl([NS.REP], '$svc = new ReportsService($config);\n$resp = $svc->getUnsubscriberReasons();'),
+    // Mailings
+    mail_list:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getMailingsByTypes(${+p.page_index||1}, ${+p.page_size||100}, ['regular']);`),
+    mail_list_state: p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getMailingsByStates(${+p.page_index||1}, ${+p.page_size||100}, ['draft']);`),
+    mail_subject:    p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getSubject(${+p.test_mailing_id||0});`),
+    mail_html:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getHTMLContent(${+p.test_mailing_id||0});`),
+    mail_copy:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->copyMailing(${+p.test_mailing_id||0});`),
+    mail_exists:     p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getMailingIdByName(${_phpVal(p.mail_name)});`),
+    mail_create:     p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->createMailing(${_phpVal(p.mail_name)}, ${_phpVal(p.mail_subject)});`),
+    // Transactions
+    tx_type_list: p => _tpl([NS.TX], `$svc = new TransactionsService($config);\n$resp = $svc->getTransactionTypes(${+p.page_index||1}, ${+p.page_size||100});`),
+    tx_type_get:  p => _tpl([NS.TX], `$svc = new TransactionsService($config);\n$resp = $svc->getTransactionType(${+p.test_tx_type_id||0});`),
+    tx_recent:    p => _tpl([NS.TX], `$svc = new TransactionsService($config);\n$resp = $svc->getRecentTransactions(${+p.test_tx_type_id||0}, 10);`),
+    tx_get:       p => _tpl([NS.TX], `$svc = new TransactionsService($config);\n$resp = $svc->getTransaction(${+p.test_tx_type_id||0}, ${_phpVal(p.test_tx_id)});`),
+    tx_delete:    p => _tpl([NS.TX], `$svc = new TransactionsService($config);\n$resp = $svc->deleteTransaction(${+p.test_tx_type_id||0}, ${_phpVal(p.test_tx_id)});`),
+    // Blacklists
+    bl_list:    p => _tpl([NS.BL], '$svc = new BlacklistsService($config);\n$resp = $svc->getBlacklists();'),
+    bl_get:     p => _tpl([NS.BL], `$svc = new BlacklistsService($config);\n$resp = $svc->getBlacklist(${+p.test_blacklist_id||0});`),
+    bl_entries: p => _tpl([NS.BL], `$svc = new BlacklistsService($config);\n$resp = $svc->addEntriesToBlacklist(${+p.test_blacklist_id||0}, ['user@example.com']);`),
+    // Webhooks
+    wh_list: p => _tpl([NS.WH], '$svc = new WebhooksService($config);\n$resp = $svc->getWebhooks();'),
+    wh_get:  p => _tpl([NS.WH], `$svc = new WebhooksService($config);\n$resp = $svc->getWebhook(${+p.test_webhook_id||0});`),
+    // Account
+    acc_info:    p => _tpl([NS.ACC], '$svc = new AccountService($config);\n$resp = $svc->getAccountInfo();'),
+    acc_ph_list: p => _tpl([NS.ACC], '$svc = new AccountService($config);\n$resp = $svc->getAccountPlaceholders();'),
+    acc_domains: p => _tpl([NS.ACC], '$svc = new AccountService($config);\n$resp = $svc->getAccountMailingDomains();'),
+    // Data extensions
+    de_datatypes:    p => _tpl([NS.DE], '$svc = new DataExtensionsService($config);\n$resp = $svc->getDataTypes();'),
+    de_list:         p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$resp = $svc->listDataExtensions(${+p.page_index||1}, ${+p.page_size||100});`),
+    de_list_paged:   p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$resp = $svc->listDataExtensions(2, ${+p.page_size||100});`),
+    de_get:          p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$resp = $svc->getDataExtension(${+p.test_de_id||0});`),
+    de_get_fields:   p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$ext = $svc->getDataExtension(${+p.test_de_id||0})->getResult();\n$fields = array_column($ext->fields, 'name');`),
+    de_create:       p => _tpl([NS.DE, NS.DE_EXT, NS.DE_FLD],
+`$ext                   = new DataExtension();
+$ext->name             = 'my_extension_' . date('His');
+$ext->retention_policy = 'NONE';
+$kf                    = new DataExtensionField();
+$kf->name              = 'ref_id';
+$kf->data_type         = 'string';
+$kf->nullable          = false;
+$kf->unique_identifier = true;
+$ext->fields           = [$kf];
+$svc  = new DataExtensionsService($config);
+$resp = $svc->createDataExtension($ext); // returns new extension ID`),
+    de_update:       p => _tpl([NS.DE, NS.DE_EXT, NS.DE_FLD],
+`$id   = ${+p.test_de_id||0}; // test_de_id (or session-created ID)
+$svc  = new DataExtensionsService($config);
+$cur  = $svc->getDataExtension($id)->getResult();
+$upd                       = new DataExtension();
+$upd->name                 = $cur->name;
+$upd->retention_policy     = $cur->retention_policy;
+$upd->description          = 'Updated description';
+$nf               = new DataExtensionField();
+$nf->name         = 'score';
+$nf->data_type    = 'integer';
+$nf->nullable     = true;
+$upd->fields      = [$nf];
+$resp = $svc->updateDataExtension($id, $upd);`),
+    de_delete:       p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$resp = $svc->deleteDataExtension(${+p.test_de_id||0}); // irreversible`),
+    de_records:      p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$resp = $svc->getDataExtensionRecords(${+p.test_de_id||0}, ${+p.page_index||1}, ${+p.page_size||100}, true);`),
+    de_records_desc: p => _tpl([NS.DE], `$svc = new DataExtensionsService($config);\n$resp = $svc->getDataExtensionRecords(${+p.test_de_id||0}, ${+p.page_index||1}, ${+p.page_size||100}, false);`),
+    de_records_filtered: p => _tpl([NS.DE], `$svc    = new DataExtensionsService($config);\n$fields = ['ref_id', 'label']; // field names to return\n$resp   = $svc->getDataExtensionRecords(${+p.test_de_id||0}, ${+p.page_index||1}, ${+p.page_size||100}, true, $fields);`),
+    de_sync_upsert:  p => _tpl([NS.DE, NS.DE_REC],
+`$r1         = new DataExtensionRecord();
+$r1->values = ['ref_id' => 'row-001', 'label' => 'First'];
+$r2         = new DataExtensionRecord();
+$r2->values = ['ref_id' => 'row-002', 'label' => 'Second'];
+$svc  = new DataExtensionsService($config);
+$resp = $svc->synchronizeRecords(${+p.test_de_id||0}, [$r1, $r2], 'UPSERT');`),
+    de_sync_insert_ign: p => _tpl([NS.DE, NS.DE_REC],
+`$rec         = new DataExtensionRecord();
+$rec->values = ['ref_id' => 'row-001', 'label' => 'First'];
+$svc  = new DataExtensionsService($config);
+$resp = $svc->synchronizeRecords(${+p.test_de_id||0}, [$rec], 'INSERT_IGNORE_DUPLICATES');`),
+    de_sync_empty:      p => _tpl([NS.DE], `$svc  = new DataExtensionsService($config);\n$resp = $svc->synchronizeRecords(${+p.test_de_id||0}, []); // must return null`),
+    de_delete_records:  p => _tpl([NS.DE], `$svc  = new DataExtensionsService($config);\n$resp = $svc->deleteAllRecords(${+p.test_de_id||0}); // irreversible`),
+    // Contacts – read (additional)
+    contact_blocked:      p => _tpl([NS.CONTACT], '$svc = new ContactsService($config);\n$resp = $svc->getBlockedContacts(1, 10);'),
+    contact_custom_fields: p => _tpl([NS.CONTACT], '$svc = new ContactsService($config);\n$resp = $svc->getCustomFields();'),
+    // Contacts – write
+    contact_create: p => _tpl([NS.CONTACT, NS.CONTACT_OBJ, NS.PERMISSION, NS.SYNC_MODE],
+`$contact              = new Contact();
+$contact->email       = ${_phpVal(p.test_email)};
+$contact->permission  = Permission::$DOI;
+$svc  = new ContactsService($config);
+$resp = $svc->createContact($contact, SynchronizationMode::$UPDATE);`),
+    contact_create_ext_id: p => _tpl([NS.CONTACT, NS.CONTACT_OBJ, NS.PERMISSION, NS.SYNC_MODE],
+`$contact              = new Contact();
+$contact->email       = ${_phpVal(p.test_email2)};
+$contact->external_id = ${_phpVal(p.test_external_id2)};
+$contact->permission  = Permission::$SOI;
+$svc  = new ContactsService($config);
+$resp = $svc->createContactByExternalId($contact, SynchronizationMode::$UPDATE);`),
+    contact_update: p => _tpl([NS.CONTACT, NS.CONTACT_OBJ, NS.PERMISSION, NS.STD_FIELD],
+`$contact                 = new Contact();
+$contact->email          = ${_phpVal(p.test_email)};
+$contact->permission     = Permission::$DOI;
+$contact->standard_fields = [StandardContactField::$FIRSTNAME => 'Updated'];
+$svc  = new ContactsService($config);
+$resp = $svc->updateContactByEmail(${_phpVal(p.test_email)}, $contact);`),
+    contact_sync: p => _tpl([NS.CONTACT, NS.CONTACT_OBJ, NS.PERMISSION, NS.STD_FIELD, NS.SYNC_MODE],
+`$contact                 = new Contact();
+$contact->email          = ${_phpVal(p.test_email)};
+$contact->permission     = Permission::$DOI;
+$contact->standard_fields = [StandardContactField::$FIRSTNAME => 'Synced'];
+$svc  = new ContactsService($config);
+$resp = $svc->synchronizeContacts([$contact], null, SynchronizationMode::$UPDATE);`),
+    contact_create_custom_field: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->createCustomField(${_phpVal(p.cf_field_name||'MyCustomField')}, 'String');`),
+    contact_rename_custom_field: p => _tpl([NS.CONTACT],
+`$oldName = ${_phpVal(p.cf_field_name||'MyCustomField')};
+$newName = $oldName . 'Renamed';
+$svc  = new ContactsService($config);
+$resp = $svc->renameCustomField($oldName, $newName);`),
+    contact_del_custom_field_vals: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->deleteCustomFieldValues(${_phpVal(p.cf_field_name||'MyCustomField')});`),
+    contact_del_custom_field: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->deleteCustomField(${_phpVal(p.cf_field_name||'MyCustomField')});`),
+    contact_del_std_field_vals: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->deleteStandardFieldValues('FIRSTNAME');`),
+    contact_unsubscribe_id: p => _tpl([NS.CONTACT],
+`$contactId = 0; // replace with contact ID (run contact_get_by_email first)
+$svc  = new ContactsService($config);
+$resp = $svc->unsubscribeContactById($contactId);`),
+    contact_delete_ext_id: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->deleteContactsByExternalId(${_phpVal(p.test_external_id2)});`),
+    // Preference categories
+    pref_cat_list:   p => _tpl([NS.CONTACT], '$svc = new ContactsService($config);\n$resp = $svc->getContactPreferenceCategories();'),
+    pref_cat_create: p => _tpl([NS.CONTACT, NS.PREF_CAT],
+`$cat              = new PreferenceCategory();
+$cat->name        = ${_phpVal(p.pref_cat_name||'my-category')};
+$cat->description = 'Created via API';
+$svc  = new ContactsService($config);
+$resp = $svc->createContactPreferenceCategory($cat);`),
+    pref_cat_get: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->getContactPreferenceCategoryByName(${_phpVal(p.pref_cat_name||'my-category')});`),
+    pref_cat_update: p => _tpl([NS.CONTACT, NS.PREF_CAT],
+`$cat              = new PreferenceCategory();
+$cat->name        = ${_phpVal(p.pref_cat_name||'my-category')};
+$cat->description = 'Updated description';
+$svc  = new ContactsService($config);
+$resp = $svc->updateContactPreferenceCategory(${_phpVal(p.pref_cat_name||'my-category')}, $cat);`),
+    pref_cat_delete: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->deleteContactPreferenceCategory(${_phpVal(p.pref_cat_name||'my-category')});`),
+    pref_list: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->getPreferencesOfContactPreferencesCategory(${_phpVal(p.pref_cat_name||'my-category')});`),
+    pref_create: p => _tpl([NS.CONTACT, NS.PREF],
+`$pref              = new Preference();
+$pref->name        = ${_phpVal(p.pref_name||'my-preference')};
+$pref->description = 'Created via API';
+$svc  = new ContactsService($config);
+$resp = $svc->createContactPreference(${_phpVal(p.pref_cat_name||'my-category')}, $pref);`),
+    pref_get: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->getContactPreference(${_phpVal(p.pref_cat_name||'my-category')}, ${_phpVal(p.pref_name||'my-preference')});`),
+    pref_update: p => _tpl([NS.CONTACT, NS.PREF],
+`$pref              = new Preference();
+$pref->name        = ${_phpVal(p.pref_name||'my-preference')};
+$pref->description = 'Updated description';
+$svc  = new ContactsService($config);
+$resp = $svc->updateContactPreference(${_phpVal(p.pref_cat_name||'my-category')}, ${_phpVal(p.pref_name||'my-preference')}, $pref);`),
+    pref_delete: p => _tpl([NS.CONTACT],
+`$svc  = new ContactsService($config);
+$resp = $svc->deleteContactPreference(${_phpVal(p.pref_cat_name||'my-category')}, ${_phpVal(p.pref_name||'my-preference')});`),
+    // Contact filters
+    cf_count: p => _tpl([NS.CF], '$svc = new ContactfiltersService($config);\n$resp = $svc->getContactFiltersCount();'),
+    cf_list:  p => _tpl([NS.CF], `$svc = new ContactfiltersService($config);\n$resp = $svc->getContactFilters(${+p.page_index||1}, ${+p.page_size||100});`),
+    cf_get:   p => _tpl([NS.CF], `$svc  = new ContactfiltersService($config);\n$resp = $svc->getContactFilter(${+p.test_cf_id||0});`),
+    cf_create: p => _tpl([NS.CF, NS.CF_OBJ],
+`$filter       = new ContactFilter();
+$filter->name = ${_phpVal(p.cf_filter_name||'my-filter')};
+$svc  = new ContactfiltersService($config);
+$resp = $svc->createContactFilter($filter, false); // returns new filter ID`),
+    cf_update: p => _tpl([NS.CF, NS.CF_OBJ],
+`$id           = ${+p.test_cf_id||0}; // replace with filter ID from cf_create
+$filter       = new ContactFilter();
+$filter->name = ${_phpVal((p.cf_filter_name||'my-filter') + '-updated')};
+$svc  = new ContactfiltersService($config);
+$resp = $svc->updateContactFilter($id, $filter);`),
+    cf_refresh: p => _tpl([NS.CF],
+`$id   = ${+p.test_cf_id||0}; // replace with filter ID
+$svc  = new ContactfiltersService($config);
+$resp = $svc->refreshContactFilterContacts($id, null);`),
+    cf_delete: p => _tpl([NS.CF],
+`$id   = ${+p.test_cf_id||0}; // replace with filter ID from cf_create
+$svc  = new ContactfiltersService($config);
+$resp = $svc->deleteContactFilter($id);`),
+    // Target groups
+    tg_count:  p => _tpl([NS.TG], '$svc = new TargetGroupsService($config);\n$resp = $svc->getTargetGroupsCount();'),
+    tg_list:   p => _tpl([NS.TG], `$svc = new TargetGroupsService($config);\n$resp = $svc->getTargetGroups(${+p.page_index||1}, ${+p.page_size||100});`),
+    tg_create: p => _tpl([NS.TG, NS.TG_OBJ],
+`$tg       = new TargetGroup();
+$tg->name = ${_phpVal(p.tg_name||'my-target-group')};
+$tg->type = 'contact_filter';
+$svc  = new TargetGroupsService($config);
+$resp = $svc->createTargetGroup($tg); // returns new target group ID`),
+    tg_get: p => _tpl([NS.TG],
+`$id   = 0; // replace with target group ID from tg_create
+$svc  = new TargetGroupsService($config);
+$resp = $svc->getTargetGroup($id);`),
+    tg_delete: p => _tpl([NS.TG],
+`$id   = 0; // replace with target group ID from tg_create
+$svc  = new TargetGroupsService($config);
+$resp = $svc->deleteTargetGroup($id);`),
+    // Mailings – read (additional)
+    mail_sender:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getSender(${+p.test_mailing_id||0});`),
+    mail_sender_alias: p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getSenderAlias(${+p.test_mailing_id||0});`),
+    mail_replyto:      p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getReplyToAddress(${+p.test_mailing_id||0});`),
+    mail_preview:      p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getPreviewText(${+p.test_mailing_id||0});`),
+    mail_tags:         p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getTags(${+p.test_mailing_id||0});`),
+    mail_locale:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getLocale(${+p.test_mailing_id||0});`),
+    mail_archive_url:  p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getArchiveUrl(${+p.test_mailing_id||0});`),
+    mail_report_url:   p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getReportUrl(${+p.test_mailing_id||0});`),
+    mail_domain:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getMailingDomain(${+p.test_mailing_id||0});`),
+    mail_state:        p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getState(${+p.test_mailing_id||0});`),
+    mail_type:         p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getType(${+p.test_mailing_id||0});`),
+    mail_cf_restrictions: p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getContactFilterRestrictionsCount(${+p.test_mailing_id||0});`),
+    mail_custom_props: p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getCustomProperties(${+p.test_mailing_id||0});`),
+    // Mailings – write
+    mail_set_html: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0}; // mailing ID (run mail_create first)
+$html = '<html><body><p>Content [unsubscribe]</p></body></html>';
+$svc  = new MailingsService($config);
+$resp = $svc->setHTMLContent($id, $html);`),
+    mail_set_sender: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->setSender($id, ${_phpVal(p.test_email||'noreply@example.com')});`),
+    mail_set_replyto: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->setReplyToAddress($id, false, ${_phpVal(p.test_email||'noreply@example.com')});`),
+    mail_set_preview: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->setPreviewText($id, 'Your preview text here');`),
+    mail_set_tags: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->setTags($id, ['tag1', 'tag2']);`),
+    mail_set_locale: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->setLocale($id, 'de_DE');`),
+    mail_add_custom_prop: p => _tpl([NS.MAIL, NS.CUSTOM_PROP],
+`$prop        = new CustomProperty();
+$prop->key   = 'my_prop';
+$prop->value = 'my_value';
+$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->addCustomProperties($id, [$prop]);`),
+    mail_upd_custom_prop: p => _tpl([NS.MAIL, NS.CUSTOM_PROP],
+`$prop        = new CustomProperty();
+$prop->key   = 'my_prop';
+$prop->value = 'updated_value';
+$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->updateCustomProperty($id, $prop);`),
+    mail_del_custom_prop: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->deleteCustomProperty($id, 'my_prop');`),
+    mail_disable_qos: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0};
+$svc  = new MailingsService($config);
+$resp = $svc->disableQosChecks($id);`),
+    mail_delete: p => _tpl([NS.MAIL],
+`$id   = ${+p.test_mailing_id||0}; // mailing ID (run mail_create first)
+$svc  = new MailingsService($config);
+$resp = $svc->deleteMailing($id); // irreversible`),
+    // Media
+    media_templates:      p => _tpl([NS.MEDIA], '$svc = new MediaService($config);\n$resp = $svc->getMailingTemplates();'),
+    media_cms2_templates: p => _tpl([NS.MEDIA], '$svc = new MediaService($config);\n$resp = $svc->getCms2MailingTemplates();'),
+    // Reports (additional)
+    rep_unique_bounces: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueBouncesCount(null, null, [${+p.test_mailing_id||0}]);`),
+    // Transactions (additional)
+    tx_type_count: p => _tpl([NS.TX], '$svc = new TransactionsService($config);\n$resp = $svc->getTransactionTypesCount();'),
+    tx_type_create: p => _tpl([NS.TX, NS.TX_TYPE, NS.ATTR_TYPE, NS.DATA_TYPE],
+`$a            = new AttributeType();
+$a->name      = 'order_id';
+$a->type      = DataType::$STRING;
+$a->required  = false;
+$trt             = new TransactionType();
+$trt->name       = ${_phpVal(p.tx_type_name||'my_tx_type')};
+$trt->attributes = [$a];
+$svc  = new TransactionsService($config);
+$resp = $svc->createTransactionType($trt); // returns new type ID`),
+    tx_type_create2: p => _tpl([NS.TX, NS.TX_TYPE, NS.ATTR_TYPE, NS.DATA_TYPE],
+`$a1            = new AttributeType();
+$a1->name      = 'transaction_id';
+$a1->type      = DataType::$STRING;
+$a1->required  = false;
+$a2            = new AttributeType();
+$a2->name      = 'amount';
+$a2->type      = DataType::$DOUBLE;
+$a2->required  = false;
+$trt             = new TransactionType();
+$trt->name       = ${_phpVal(p.tx_type_name2||'my_tx_type2')};
+$trt->attributes = [$a1, $a2];
+$svc  = new TransactionsService($config);
+$resp = $svc->createTransactionType($trt);`),
+    tx_send: p => _tpl([NS.TX, NS.TX_OBJ, NS.CONTACT_REF],
+`$contact        = new ContactReference();
+$contact->email = ${_phpVal(p.test_email)};
+$tx             = new Transaction();
+$tx->contact    = $contact;
+$tx->typeid     = ${+p.test_tx_type_id||0};
+$tx->content    = ['order_id' => 'order-001'];
+$svc  = new TransactionsService($config);
+$resp = $svc->createTransactions([$tx], true, false);`),
+    tx_send_multi: p => _tpl([NS.TX, NS.TX_OBJ, NS.CONTACT_REF],
+`$typeId = ${+p.test_tx_type_id||0};
+$email  = ${_phpVal(p.test_email)};
+$txs    = [];
+foreach (['order-002', 'order-003', 'order-004'] as $oid) {
+    $contact        = new ContactReference();
+    $contact->email = $email;
+    $tx             = new Transaction();
+    $tx->contact    = $contact;
+    $tx->typeid     = $typeId;
+    $tx->content    = ['order_id' => $oid];
+    $txs[]          = $tx;
+}
+$svc  = new TransactionsService($config);
+$resp = $svc->createTransactions($txs, true, false);`),
+    tx_delete_by_date: p => _tpl([NS.TX],
+`$typeId   = ${+p.test_tx_type_id||0};
+$beforeMs = strtotime('1970-01-02') * 1000; // epoch ms – adjust date as needed
+$svc  = new TransactionsService($config);
+$resp = $svc->deleteTransactions($typeId, $beforeMs);`),
+    tx_type_delete: p => _tpl([NS.TX],
+`$id   = 0; // replace with type ID from tx_type_create
+$svc  = new TransactionsService($config);
+$resp = $svc->deleteTransactionType($id);`),
+    // Mailing blacklists
+    mbl_list: p => _tpl([NS.MBL], '$svc = new MailingBlacklistsService($config);\n$resp = $svc->getMailingBlacklists();'),
+    mbl_create: p => _tpl([NS.MBL],
+`$svc  = new MailingBlacklistsService($config);
+$resp = $svc->createMailingBlacklist(${_phpVal(p.mbl_name||'my-mailing-blacklist')}); // returns new blacklist ID`),
+    mbl_get: p => _tpl([NS.MBL],
+`$id   = 0; // replace with ID from mbl_create
+$svc  = new MailingBlacklistsService($config);
+$resp = $svc->getMailingBlacklist($id);`),
+    mbl_update: p => _tpl([NS.MBL],
+`$id      = 0; // replace with ID from mbl_create
+$newName = ${_phpVal((p.mbl_name||'my-mailing-blacklist') + '-updated')};
+$svc  = new MailingBlacklistsService($config);
+$resp = $svc->updateMailingBlacklist($id, $newName);`),
+    mbl_entries: p => _tpl([NS.MBL, NS.MBL_EXPR],
+`$expr              = new MailingBlacklistExpressions();
+$expr->expressions = ['@bounce-test.invalid', 'spam@example.invalid'];
+$id   = 0; // replace with ID from mbl_create
+$svc  = new MailingBlacklistsService($config);
+$resp = $svc->addEntriesToBlacklist($id, $expr);`),
+    mbl_get_entries: p => _tpl([NS.MBL],
+`$id   = 0; // replace with ID from mbl_create
+$svc  = new MailingBlacklistsService($config);
+$resp = $svc->getEntriesForBlacklist($id);`),
+    mbl_delete: p => _tpl([NS.MBL],
+`$id   = 0; // replace with ID from mbl_create
+$svc  = new MailingBlacklistsService($config);
+$resp = $svc->deleteMailingBlacklist($id); // irreversible`),
+    // Account – write
+    acc_ph_set: p => _tpl([NS.ACC, NS.ACC_PH],
+`$ph        = new AccountPlaceholder();
+$ph->key   = 'my_placeholder';
+$ph->value = 'hello from API';
+$svc  = new AccountService($config);
+$resp = $svc->setAccountPlaceholders([$ph]);`),
+    acc_ph_update: p => _tpl([NS.ACC, NS.ACC_PH],
+`$ph        = new AccountPlaceholder();
+$ph->key   = 'my_placeholder';
+$ph->value = 'updated value';
+$svc  = new AccountService($config);
+$resp = $svc->updateAccountPlaceholders([$ph]);`),
+    acc_ph_delete: p => _tpl([NS.ACC],
+`$svc  = new AccountService($config);
+$resp = $svc->deleteAccountPlaceholder('my_placeholder');`),
+    // Webhooks – write
+    wh_create: p => _tpl([NS.WH, NS.WH_OBJ],
+`$wh        = new Webhook();
+$wh->url   = ${_phpVal(p.webhook_url||'https://webhook.site/your-uuid')};
+$wh->event = Webhook::$EVENT_UNSUBSCRIPTION;
+$svc  = new WebhooksService($config);
+$resp = $svc->createWebhook($wh); // returns new webhook ID`),
+    wh_get_created: p => _tpl([NS.WH],
+`$id   = 0; // replace with ID from wh_create
+$svc  = new WebhooksService($config);
+$resp = $svc->getWebhook($id);`),
+    wh_update: p => _tpl([NS.WH, NS.WH_OBJ],
+`$id        = 0; // replace with ID from wh_create
+$wh        = new Webhook();
+$wh->url   = 'https://webhook.site/updated-url';
+$wh->event = Webhook::$EVENT_BOUNCE;
+$svc  = new WebhooksService($config);
+$resp = $svc->updateWebhook($id, $wh);`),
+    wh_delete: p => _tpl([NS.WH],
+`$id   = 0; // replace with ID from wh_create
+$svc  = new WebhooksService($config);
+$resp = $svc->deleteWebhook($id); // irreversible`),
+};
+
+// Minimal PHP syntax highlighter — no external dependencies
+function highlightPhp(raw) {
+    const KWS  = new Set(['new','use','function','class','return','if','else','foreach','as',
+                          'echo','require_once','require','var_dump']);
+    const LITS = new Set(['null','true','false','NULL','TRUE','FALSE']);
+    function esc(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+    function sp(cls, s) { return '<span class="php-' + cls + '">' + esc(s) + '</span>'; }
+
+    let out = '', i = 0, afterNew = false;
+    const n = raw.length;
+
+    while (i < n) {
+        // Line comment
+        if (raw[i] === '/' && raw[i+1] === '/') {
+            const end = raw.indexOf('\n', i);
+            const tok = end === -1 ? raw.slice(i) : raw.slice(i, end);
+            out += sp('cmt', tok); i += tok.length; afterNew = false; continue;
+        }
+        // Block comment
+        if (raw[i] === '/' && raw[i+1] === '*') {
+            const end = raw.indexOf('*/', i+2);
+            const tok = end === -1 ? raw.slice(i) : raw.slice(i, end+2);
+            out += sp('cmt', tok); i += tok.length; afterNew = false; continue;
+        }
+        // Single-quoted string
+        if (raw[i] === "'") {
+            let j = i+1;
+            while (j < n && raw[j] !== "'") { if (raw[j] === '\\') j++; j++; }
+            out += sp('str', raw.slice(i, j+1)); i = j+1; afterNew = false; continue;
+        }
+        // Double-quoted string
+        if (raw[i] === '"') {
+            let j = i+1;
+            while (j < n && raw[j] !== '"') { if (raw[j] === '\\') j++; j++; }
+            out += sp('str', raw.slice(i, j+1)); i = j+1; afterNew = false; continue;
+        }
+        // PHP open tag
+        if (raw.slice(i, i+5) === '<?php') {
+            out += sp('tag', '<?php'); i += 5; afterNew = false; continue;
+        }
+        // Variable ($name)
+        if (raw[i] === '$' && i+1 < n && /[a-zA-Z_]/.test(raw[i+1])) {
+            let j = i+1;
+            while (j < n && /[a-zA-Z0-9_]/.test(raw[j])) j++;
+            out += sp('var', raw.slice(i, j)); i = j; afterNew = false; continue;
+        }
+        // Arrow operator -> and scope ::
+        if (raw[i] === '-' && raw[i+1] === '>') { out += sp('op', '->'); i += 2; continue; }
+        if (raw[i] === ':' && raw[i+1] === ':') { out += sp('op', '::'); i += 2; continue; }
+        // Number
+        if (/[0-9]/.test(raw[i]) && (i === 0 || !/[a-zA-Z0-9_$]/.test(raw[i-1]))) {
+            let j = i;
+            while (j < n && /[0-9.]/.test(raw[j])) j++;
+            out += sp('num', raw.slice(i, j)); i = j; afterNew = false; continue;
+        }
+        // Identifier: keyword / literal / class name / plain
+        if (/[a-zA-Z_]/.test(raw[i])) {
+            let j = i;
+            while (j < n && /[a-zA-Z0-9_]/.test(raw[j])) j++;
+            const word = raw.slice(i, j);
+            if (KWS.has(word)) {
+                out += sp('kw', word); afterNew = (word === 'new');
+            } else if (LITS.has(word)) {
+                out += sp('lit', word); afterNew = false;
+            } else if (afterNew || raw.slice(j, j+2) === '::') {
+                out += sp('cls', word); afterNew = false;
+            } else {
+                out += esc(word); afterNew = false;
+            }
+            i = j; continue;
+        }
+        // Whitespace — preserve afterNew so `new ClassName` works across the space
+        if (raw[i] === ' ' || raw[i] === '\t') { out += raw[i++]; continue; }
+        // Everything else
+        out += esc(raw[i++]); afterNew = false;
+    }
+    return out;
+}
+
+function showCode(key) {
+    const p = _collectParams();
+    const overlay   = document.getElementById('code-overlay');
+    const titleEl   = document.getElementById('code-modal-title');
+    const preEl     = document.getElementById('code-modal-pre');
+
+    titleEl.textContent = key;
+
+    const tpl = CODE_TEMPLATES[key];
+    let codeStr;
+    if (!tpl) {
+        codeStr = '// No PHP snippet defined for: ' + key + '\n// Check the service class directly.';
+    } else {
+        const result = tpl(p);
+        const uses   = (result.uses || []).map(u => 'use ' + u + ';').join('\n');
+        codeStr =
+            '<?php\n\n'
+            + "require_once __DIR__ . '/vendor/autoload.php'; // adjust path\n\n"
+            + uses + '\n\n'
+            + "$config = [\n    'API_KEY'  => 'YOUR_API_KEY',\n    'BASE_URI' => 'https://api.maileon.com/1.0',\n];\n\n"
+            + result.call + '\n\n'
+            + "if ($resp && $resp->isSuccess()) {\n    var_dump($resp->getResult());\n} else {\n    echo 'Error: HTTP ', $resp ? $resp->getStatusCode() : 'null';\n}";
+    }
+    preEl.innerHTML = highlightPhp(codeStr);
+
+    overlay.style.display = '';
 }
 </script>
 

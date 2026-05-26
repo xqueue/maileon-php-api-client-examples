@@ -20,6 +20,9 @@ use de\xqueue\maileon\api\client\contacts\Preference;
 use de\xqueue\maileon\api\client\contacts\PreferenceCategory;
 use de\xqueue\maileon\api\client\contacts\StandardContactField;
 use de\xqueue\maileon\api\client\contacts\SynchronizationMode;
+use de\xqueue\maileon\api\client\dataextensions\DataExtension;
+use de\xqueue\maileon\api\client\dataextensions\DataExtensionField;
+use de\xqueue\maileon\api\client\dataextensions\DataExtensionRecord;
 use de\xqueue\maileon\api\client\dataextensions\DataExtensionsService;
 use de\xqueue\maileon\api\client\mailings\CustomProperty;
 use de\xqueue\maileon\api\client\mailings\MailingsService;
@@ -118,8 +121,9 @@ $canonicalOrder = [
     'mbl_list', 'mbl_create', 'mbl_get', 'mbl_update', 'mbl_entries', 'mbl_get_entries', 'mbl_delete',
     'acc_info', 'acc_ph_list', 'acc_ph_set', 'acc_ph_update', 'acc_ph_delete', 'acc_domains',
     'wh_list', 'wh_get', 'wh_create', 'wh_get_created', 'wh_update', 'wh_delete',
-    'de_list', 'de_list_paged', 'de_get', 'de_get_fields', 'de_records', 'de_records_desc',
-    'de_records_filtered', 'de_sync_upsert', 'de_sync_insert_ign', 'de_sync_empty',
+    'de_datatypes', 'de_list', 'de_list_paged', 'de_create', 'de_get', 'de_get_fields',
+    'de_update', 'de_records', 'de_records_desc', 'de_records_filtered',
+    'de_sync_upsert', 'de_sync_insert_ign', 'de_delete_records', 'de_sync_empty', 'de_delete',
 ];
 
 $selectedSet = array_flip($selectedTests);
@@ -174,17 +178,34 @@ function _res(string $label, ?object $response): array
     $httpLine   = $rawHeaders['http_code'] ?? null;
     unset($rawHeaders['http_code']);
 
+    $result          = $response->getResult();
+    $toStringResult  = null;
+    if (is_object($result) && method_exists($result, '__toString')) {
+        $toStringResult = (string) $result;
+    } elseif (is_array($result) && !empty($result)) {
+        $parts = [];
+        foreach ($result as $item) {
+            if (is_object($item) && method_exists($item, '__toString')) {
+                $parts[] = (string) $item;
+            }
+        }
+        if (!empty($parts)) {
+            $toStringResult = implode("\n", $parts);
+        }
+    }
+
     return [
-        'label'       => $label,
-        'success'     => $response->isSuccess(),
-        'data'        => _ser($response->getResult()),
-        'body'        => $response->getBodyData(),
-        'status'      => $response->getStatusCode(),
-        'http_line'   => $httpLine,
-        'skipped'     => false,
-        'message'     => $response->isSuccess() ? '' : ('HTTP ' . $response->getStatusCode()),
-        'req_headers' => $reqHeaders,
-        'res_headers' => empty($rawHeaders) ? null : $rawHeaders,
+        'label'          => $label,
+        'success'        => $response->isSuccess(),
+        'data'           => _ser($result),
+        'toString_result'=> $toStringResult,
+        'body'           => $response->getBodyData(),
+        'status'         => $response->getStatusCode(),
+        'http_line'      => $httpLine,
+        'skipped'        => false,
+        'message'        => $response->isSuccess() ? '' : ('HTTP ' . $response->getStatusCode()),
+        'req_headers'    => $reqHeaders,
+        'res_headers'    => empty($rawHeaders) ? null : $rawHeaders,
     ];
 }
 
@@ -248,6 +269,7 @@ $st = [
     'mail_name'      => 'php-ui-test-mailing',
     'mail_subject'   => 'UI Test Subject',
     'webhook_url'    => '',
+    'de_created_id'  => null,
 ];
 
 // Apply name/string overrides from UI params panel
@@ -310,11 +332,15 @@ foreach ($toRun as $key) {
             }
 
         } elseif ($key === 'contact_list') {
-            $r = _res('List (paginated)', (new ContactsService($cfg))->getContacts(1, 10));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List (paginated)', (new ContactsService($cfg))->getContacts($pi, $ps));
 
         } elseif ($key === 'contact_list_update_after') {
+            $pi     = max(1, (int)($p['page_index'] ?? 1));
+            $ps     = max(1, min(1000, (int)($p['page_size'] ?? 100)));
             $ago30d = strtotime('-30 days') * 1000;
-            $r = _res('List (updated after)', (new ContactsService($cfg))->getContacts(1, 10, [], [], $ago30d));
+            $r = _res('List (updated after)', (new ContactsService($cfg))->getContacts($pi, $ps, [], [], $ago30d));
 
         } elseif ($key === 'contact_blocked') {
             $r = _res('Blocked contacts', (new ContactsService($cfg))->getBlockedContacts(1, 10));
@@ -329,8 +355,16 @@ foreach ($toRun as $key) {
             } else {
                 $contact              = new Contact();
                 $contact->email       = $testEmail;
-                $contact->permission  = Permission::$DOI;
                 $contact->external_id = $testExtId ?: null;
+                $bodyJson = trim($p['contact_body'] ?? '');
+                $body     = $bodyJson ? @json_decode($bodyJson, true) : null;
+                if (is_array($body)) {
+                    $contact->permission      = Permission::getPermission($body['permission'] ?? 'doi');
+                    $contact->standard_fields = $body['standard_fields'] ?? [];
+                    $contact->custom_fields   = $body['custom_fields'] ?? [];
+                } else {
+                    $contact->permission = Permission::$DOI;
+                }
                 $r = _res('Create', (new ContactsService($cfg))->createContact($contact, SynchronizationMode::$UPDATE));
             }
 
@@ -340,8 +374,16 @@ foreach ($toRun as $key) {
             } else {
                 $contact              = new Contact();
                 $contact->email       = $testEmail2;
-                $contact->permission  = Permission::$SOI;
                 $contact->external_id = $testExtId2;
+                $bodyJson = trim($p['contact_body'] ?? '');
+                $body     = $bodyJson ? @json_decode($bodyJson, true) : null;
+                if (is_array($body)) {
+                    $contact->permission      = Permission::getPermission($body['permission'] ?? 'soi');
+                    $contact->standard_fields = $body['standard_fields'] ?? [];
+                    $contact->custom_fields   = $body['custom_fields'] ?? [];
+                } else {
+                    $contact->permission = Permission::$SOI;
+                }
                 $r = _res('Create by external ID', (new ContactsService($cfg))->createContactByExternalId($contact, SynchronizationMode::$UPDATE));
             }
 
@@ -349,10 +391,18 @@ foreach ($toRun as $key) {
             if (!$testEmail) {
                 $r = _skp('Update', 'test_email not configured');
             } else {
-                $contact              = new Contact();
-                $contact->email       = $testEmail;
-                $contact->permission  = Permission::$DOI;
-                $contact->standard_fields = [StandardContactField::$FIRSTNAME => 'UITest'];
+                $contact        = new Contact();
+                $contact->email = $testEmail;
+                $bodyJson = trim($p['contact_body'] ?? '');
+                $body     = $bodyJson ? @json_decode($bodyJson, true) : null;
+                if (is_array($body)) {
+                    $contact->permission      = Permission::getPermission($body['permission'] ?? 'doi');
+                    $contact->standard_fields = $body['standard_fields'] ?? [];
+                    $contact->custom_fields   = $body['custom_fields'] ?? [];
+                } else {
+                    $contact->permission      = Permission::$DOI;
+                    $contact->standard_fields = [StandardContactField::$FIRSTNAME => 'UITest'];
+                }
                 $r = _res('Update', (new ContactsService($cfg))->updateContactByEmail($testEmail, $contact));
             }
 
@@ -360,10 +410,18 @@ foreach ($toRun as $key) {
             if (!$testEmail) {
                 $r = _skp('Synchronize', 'test_email not configured');
             } else {
-                $contact              = new Contact();
-                $contact->email       = $testEmail;
-                $contact->permission  = Permission::$DOI;
-                $contact->standard_fields = [StandardContactField::$FIRSTNAME => 'UISync'];
+                $contact        = new Contact();
+                $contact->email = $testEmail;
+                $bodyJson = trim($p['contact_body'] ?? '');
+                $body     = $bodyJson ? @json_decode($bodyJson, true) : null;
+                if (is_array($body)) {
+                    $contact->permission      = Permission::getPermission($body['permission'] ?? 'doi');
+                    $contact->standard_fields = $body['standard_fields'] ?? [];
+                    $contact->custom_fields   = $body['custom_fields'] ?? [];
+                } else {
+                    $contact->permission      = Permission::$DOI;
+                    $contact->standard_fields = [StandardContactField::$FIRSTNAME => 'UISync'];
+                }
                 $r = _res('Synchronize', (new ContactsService($cfg))->synchronizeContacts([$contact], null, SynchronizationMode::$UPDATE));
             }
 
@@ -464,7 +522,9 @@ foreach ($toRun as $key) {
             $r = _res('Count', (new ContactfiltersService($cfg))->getContactFiltersCount());
 
         } elseif ($key === 'cf_list') {
-            $r = _res('List', (new ContactfiltersService($cfg))->getContactFilters(1, 10));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List (paginated)', (new ContactfiltersService($cfg))->getContactFilters($pi, $ps));
 
         } elseif ($key === 'cf_get') {
             $id = $cfgCfId ?: $st['cf_id'];
@@ -514,7 +574,9 @@ foreach ($toRun as $key) {
             $r = _res('Count', (new TargetGroupsService($cfg))->getTargetGroupsCount());
 
         } elseif ($key === 'tg_list') {
-            $r = _res('List', (new TargetGroupsService($cfg))->getTargetGroups(1, 10));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List (paginated)', (new TargetGroupsService($cfg))->getTargetGroups($pi, $ps));
 
         } elseif ($key === 'tg_create') {
             $tg       = new TargetGroup();
@@ -542,10 +604,14 @@ foreach ($toRun as $key) {
 
         // ── Mailings – read ───────────────────────────────────────────────────
         } elseif ($key === 'mail_list') {
-            $r = _res('List (by type)', (new MailingsService($cfg))->getMailingsByTypes(1, 10, ['regular']));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List by type (paginated)', (new MailingsService($cfg))->getMailingsByTypes($pi, $ps, ['regular']));
 
         } elseif ($key === 'mail_list_state') {
-            $r = _res('List (by state)', (new MailingsService($cfg))->getMailingsByStates(1, 10, ['draft']));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List by state (paginated)', (new MailingsService($cfg))->getMailingsByStates($pi, $ps, ['draft']));
 
         } elseif ($key === 'mail_subject') {
             $id = $st['mailing_id'] ?: $cfgMailingId;
@@ -870,7 +936,9 @@ foreach ($toRun as $key) {
             $r = _res('Type count', (new TransactionsService($cfg))->getTransactionTypesCount());
 
         } elseif ($key === 'tx_type_list') {
-            $r = _res('Type list', (new TransactionsService($cfg))->getTransactionTypes(1, 10));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('Type list (paginated)', (new TransactionsService($cfg))->getTransactionTypes($pi, $ps));
 
         } elseif ($key === 'tx_type_get') {
             $id = $cfgTxTypeId;
@@ -1142,11 +1210,122 @@ foreach ($toRun as $key) {
             }
 
         // ── Data Extensions ───────────────────────────────────────────────────
+        } elseif ($key === 'de_datatypes') {
+            $r = _res('Get data types', (new DataExtensionsService($cfg))->getDataTypes());
+
+        } elseif ($key === 'de_create') {
+            $bodyJson = trim($p['de_create_body'] ?? '');
+            $body     = $bodyJson ? @json_decode($bodyJson, true) : null;
+
+            $ext = new DataExtension();
+            if (is_array($body)) {
+                $ext->name             = $body['name'] ?? ('php_ui_test_' . date('His'));
+                $ext->description      = $body['description'] ?? null;
+                $ext->retention_policy = $body['retention_policy'] ?? 'NONE';
+                $ext->fields = [];
+                foreach ($body['fields'] ?? [] as $fd) {
+                    $f                    = new DataExtensionField();
+                    $f->name              = $fd['name'];
+                    $f->data_type         = $fd['data_type'];
+                    $f->nullable          = isset($fd['nullable']) ? (bool) $fd['nullable'] : true;
+                    $f->unique_identifier = isset($fd['unique_identifier']) ? (bool) $fd['unique_identifier'] : false;
+                    $f->default_value     = $fd['default_value'] ?? null;
+                    $ext->fields[]        = $f;
+                }
+            } else {
+                $ext->name             = 'php_ui_test_' . date('His');
+                $ext->description      = 'Created by UI test runner';
+                $ext->retention_policy = 'NONE';
+                $kf                    = new DataExtensionField();
+                $kf->name              = 'ref_id';
+                $kf->data_type         = 'string';
+                $kf->nullable          = false;
+                $kf->unique_identifier = true;
+                $vf                    = new DataExtensionField();
+                $vf->name              = 'label';
+                $vf->data_type         = 'string';
+                $vf->nullable          = true;
+                $ext->fields           = [$kf, $vf];
+            }
+
+            $resp = (new DataExtensionsService($cfg))->createDataExtension($ext);
+            if ($resp && $resp->isSuccess() && $resp->getResult() > 0) {
+                $st['de_created_id'] = (int) $resp->getResult();
+            }
+            $r = _res('Create extension', $resp);
+
+        } elseif ($key === 'de_update') {
+            $id = $st['de_created_id'] ?: $cfgDeId;
+            if (!$id) {
+                $r = _skp('Update extension', 'no extension ID — run de_create first or set test_de_id');
+            } else {
+                $svc         = new DataExtensionsService($cfg);
+                $currentResp = $svc->getDataExtension($id);
+                if (!$currentResp || !$currentResp->isSuccess()) {
+                    $r = _res('Update extension (fetch current)', $currentResp);
+                } else {
+                    $current  = $currentResp->getResult();
+                    $bodyJson = trim($p['de_update_body'] ?? '');
+                    $body     = $bodyJson ? @json_decode($bodyJson, true) : null;
+
+                    $upd                       = new DataExtension();
+                    $upd->name                 = $current->name;
+                    $upd->retention_policy     = $current->retention_policy;
+                    $upd->delete_interval      = $current->delete_interval;
+                    $upd->delete_interval_unit = $current->delete_interval_unit;
+                    $upd->delete_date          = $current->delete_date;
+
+                    if (is_array($body)) {
+                        $upd->description = $body['description'] ?? $current->description;
+                        $upd->fields = [];
+                        foreach ($body['fields'] ?? [] as $fd) {
+                            $f                    = new DataExtensionField();
+                            $f->name              = $fd['name'];
+                            $f->data_type         = $fd['data_type'];
+                            $f->nullable          = isset($fd['nullable']) ? (bool) $fd['nullable'] : true;
+                            $f->unique_identifier = isset($fd['unique_identifier']) ? (bool) $fd['unique_identifier'] : false;
+                            $upd->fields[]        = $f;
+                        }
+                    } else {
+                        $upd->description = 'Updated by UI test runner';
+                        $nf               = new DataExtensionField();
+                        $nf->name         = 'score';
+                        $nf->data_type    = 'integer';
+                        $nf->nullable     = true;
+                        $upd->fields      = [$nf];
+                    }
+
+                    $r = _res('Update extension', $svc->updateDataExtension($id, $upd));
+                }
+            }
+
+        } elseif ($key === 'de_delete_records') {
+            if (!$cfgDeId) {
+                $r = _skp('Delete all records', 'test_de_id not configured');
+            } else {
+                $r = _res('Delete all records', (new DataExtensionsService($cfg))->deleteAllRecords($cfgDeId));
+            }
+
+        } elseif ($key === 'de_delete') {
+            $id = $st['de_created_id'] ?: $cfgDeId;
+            if (!$id) {
+                $r = _skp('Delete extension', 'no extension ID — run de_create first or set test_de_id');
+            } else {
+                $r = _res('Delete extension', (new DataExtensionsService($cfg))->deleteDataExtension($id));
+                if ($r['success'] && $id === $st['de_created_id']) {
+                    $st['de_created_id'] = null;
+                }
+            }
+
         } elseif ($key === 'de_list') {
-            $r = _res('List extensions', (new DataExtensionsService($cfg))->listDataExtensions(1, 20));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List extensions', (new DataExtensionsService($cfg))->listDataExtensions($pi, $ps));
 
         } elseif ($key === 'de_list_paged') {
-            $r = _res('List (page 2)', (new DataExtensionsService($cfg))->listDataExtensions(2, 20));
+            $pi = max(1, (int)($p['page_index'] ?? 2));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('List extensions (page 2)', (new DataExtensionsService($cfg))->listDataExtensions($pi, $ps));
 
         } elseif ($key === 'de_get') {
             if (!$cfgDeId) {
@@ -1157,15 +1336,15 @@ foreach ($toRun as $key) {
 
         } elseif ($key === 'de_get_fields') {
             if (!$cfgDeId) {
-                $r = _skp('Verify fields', 'test_de_id not configured');
+                $r = _skp('Get extension fields', 'test_de_id not configured');
             } else {
                 $resp = (new DataExtensionsService($cfg))->getDataExtension($cfgDeId);
                 if ($resp && $resp->isSuccess()) {
                     $ext    = $resp->getResult();
-                    $fields = array_column((array)($ext->fields ?? []), 'name');
-                    $r = ['label' => 'Verify fields', 'success' => !empty($fields), 'data' => $fields, 'status' => $resp->getStatusCode(), 'skipped' => false, 'message' => empty($fields) ? 'No fields found' : ''];
+                    $fields = array_column($ext->fields ?? [], 'name');
+                    $r = ['label' => 'Get extension fields', 'success' => !empty($fields), 'data' => $fields, 'status' => $resp->getStatusCode(), 'skipped' => false, 'message' => empty($fields) ? 'No fields found' : ''];
                 } else {
-                    $r = _res('Verify fields', $resp);
+                    $r = _res('Get extension fields', $resp);
                 }
             }
 
@@ -1173,79 +1352,108 @@ foreach ($toRun as $key) {
             if (!$cfgDeId) {
                 $r = _skp('Get records', 'test_de_id not configured');
             } else {
-                $r = _res('Get records', (new DataExtensionsService($cfg))->getDataExtensionRecords($cfgDeId, 1, 10, true));
+                $pi = max(1, (int)($p['page_index'] ?? 1));
+                $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+                $r = _res('Get records', (new DataExtensionsService($cfg))->getDataExtensionRecords($cfgDeId, $pi, $ps, true));
             }
 
         } elseif ($key === 'de_records_desc') {
             if (!$cfgDeId) {
                 $r = _skp('Get records (desc)', 'test_de_id not configured');
             } else {
-                $r = _res('Get records (desc)', (new DataExtensionsService($cfg))->getDataExtensionRecords($cfgDeId, 1, 10, false));
+                $pi = max(1, (int)($p['page_index'] ?? 1));
+                $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+                $r = _res('Get records (desc)', (new DataExtensionsService($cfg))->getDataExtensionRecords($cfgDeId, $pi, $ps, false));
             }
 
         } elseif ($key === 'de_records_filtered') {
             if (!$cfgDeId) {
                 $r = _skp('Get records (filtered)', 'test_de_id not configured');
             } else {
+                $pi   = max(1, (int)($p['page_index'] ?? 1));
+                $ps   = max(1, min(1000, (int)($p['page_size'] ?? 100)));
                 $svc  = new DataExtensionsService($cfg);
                 $meta = $svc->getDataExtension($cfgDeId);
                 $fields = [];
                 if ($meta && $meta->isSuccess() && $meta->getResult()) {
-                    $rawFields = (array)($meta->getResult()->fields ?? []);
-                    $fields    = array_slice(array_column($rawFields, 'name'), 0, 2);
+                    $fields = array_slice(array_column($meta->getResult()->fields ?? [], 'name'), 0, 2);
                 }
-                $r = _res('Get records (filtered)', $svc->getDataExtensionRecords($cfgDeId, 1, 10, true, $fields));
+                $r = _res('Get records (filtered)', $svc->getDataExtensionRecords($cfgDeId, $pi, $ps, true, $fields));
             }
 
         } elseif ($key === 'de_sync_upsert') {
             if (!$cfgDeId) {
-                $r = _skp('Sync UPSERT', 'test_de_id not configured');
+                $r = _skp('Synchronize records (UPSERT)', 'test_de_id not configured');
             } else {
-                $svc    = new DataExtensionsService($cfg);
-                $meta   = $svc->getDataExtension($cfgDeId);
-                $record = [];
-                if ($meta && $meta->isSuccess() && $meta->getResult()) {
-                    $rawFields = (array)($meta->getResult()->fields ?? []);
-                    foreach ($rawFields as $f) {
-                        $record[(string)$f->name] = 'ui-test';
-                        break;
-                    }
-                }
-                if (empty($record)) {
-                    $r = _skp('Sync UPSERT', 'extension has no fields');
+                $bodyJson   = trim($p['de_sync_body'] ?? '');
+                $rawRecords = $bodyJson ? @json_decode($bodyJson, true) : null;
+                if (is_array($rawRecords) && !empty($rawRecords)) {
+                    $records = array_map(function (array $values): DataExtensionRecord {
+                        $rec         = new DataExtensionRecord();
+                        $rec->values = $values;
+                        return $rec;
+                    }, $rawRecords);
+                    $r = _res('Synchronize records (UPSERT)', (new DataExtensionsService($cfg))->synchronizeRecords($cfgDeId, $records, 'UPSERT'));
                 } else {
-                    $r = _res('Sync UPSERT', $svc->synchronizeRecords($cfgDeId, [$record], 'UPSERT'));
+                    $svc  = new DataExtensionsService($cfg);
+                    $meta = $svc->getDataExtension($cfgDeId);
+                    $rec  = null;
+                    if ($meta && $meta->isSuccess() && $meta->getResult()) {
+                        foreach ($meta->getResult()->fields as $f) {
+                            $r2         = new DataExtensionRecord();
+                            $r2->values = [(string)$f->name => 'ui-test'];
+                            $rec        = $r2;
+                            break;
+                        }
+                    }
+                    if ($rec === null) {
+                        $r = _skp('Synchronize records (UPSERT)', 'extension has no fields');
+                    } else {
+                        $r = _res('Synchronize records (UPSERT)', $svc->synchronizeRecords($cfgDeId, [$rec], 'UPSERT'));
+                    }
                 }
             }
 
         } elseif ($key === 'de_sync_insert_ign') {
             if (!$cfgDeId) {
-                $r = _skp('Sync INSERT_IGNORE', 'test_de_id not configured');
+                $r = _skp('Synchronize records (INSERT_IGNORE_DUPLICATES)', 'test_de_id not configured');
             } else {
-                $svc    = new DataExtensionsService($cfg);
-                $meta   = $svc->getDataExtension($cfgDeId);
-                $record = [];
-                if ($meta && $meta->isSuccess() && $meta->getResult()) {
-                    $rawFields = (array)($meta->getResult()->fields ?? []);
-                    foreach ($rawFields as $f) {
-                        $record[(string)$f->name] = 'ui-test-ign';
-                        break;
-                    }
-                }
-                if (empty($record)) {
-                    $r = _skp('Sync INSERT_IGNORE', 'extension has no fields');
+                $bodyJson   = trim($p['de_sync_body'] ?? '');
+                $rawRecords = $bodyJson ? @json_decode($bodyJson, true) : null;
+                if (is_array($rawRecords) && !empty($rawRecords)) {
+                    $records = array_map(function (array $values): DataExtensionRecord {
+                        $rec         = new DataExtensionRecord();
+                        $rec->values = $values;
+                        return $rec;
+                    }, $rawRecords);
+                    $r = _res('Synchronize records (INSERT_IGNORE_DUPLICATES)', (new DataExtensionsService($cfg))->synchronizeRecords($cfgDeId, $records, 'INSERT_IGNORE_DUPLICATES'));
                 } else {
-                    $r = _res('Sync INSERT_IGNORE', $svc->synchronizeRecords($cfgDeId, [$record], 'INSERT_IGNORE_DUPLICATES'));
+                    $svc  = new DataExtensionsService($cfg);
+                    $meta = $svc->getDataExtension($cfgDeId);
+                    $rec  = null;
+                    if ($meta && $meta->isSuccess() && $meta->getResult()) {
+                        foreach ($meta->getResult()->fields as $f) {
+                            $r2         = new DataExtensionRecord();
+                            $r2->values = [(string)$f->name => 'ui-test-ign'];
+                            $rec        = $r2;
+                            break;
+                        }
+                    }
+                    if ($rec === null) {
+                        $r = _skp('Synchronize records (INSERT_IGNORE_DUPLICATES)', 'extension has no fields');
+                    } else {
+                        $r = _res('Synchronize records (INSERT_IGNORE_DUPLICATES)', $svc->synchronizeRecords($cfgDeId, [$rec], 'INSERT_IGNORE_DUPLICATES'));
+                    }
                 }
             }
 
         } elseif ($key === 'de_sync_empty') {
             if (!$cfgDeId) {
-                $r = _skp('Sync empty (guard)', 'test_de_id not configured');
+                $r = _skp('Synchronize records (empty payload)', 'test_de_id not configured');
             } else {
-                $resp    = (new DataExtensionsService($cfg))->synchronizeRecords($cfgDeId, [], 'UPSERT');
-                $isNull  = $resp === null;
-                $r = ['label' => 'Sync empty (guard)', 'success' => $isNull, 'data' => ['response_is_null' => $isNull], 'status' => 0, 'skipped' => false, 'message' => $isNull ? '' : 'Expected null response for empty records'];
+                $resp   = (new DataExtensionsService($cfg))->synchronizeRecords($cfgDeId, [], 'UPSERT');
+                $isNull = $resp === null;
+                $r = ['label' => 'Synchronize records (empty payload)', 'success' => $isNull, 'data' => ['response_is_null' => $isNull], 'status' => 0, 'skipped' => false, 'message' => $isNull ? '' : 'Expected null response for empty records'];
             }
 
         } else {
