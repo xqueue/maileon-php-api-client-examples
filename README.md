@@ -184,6 +184,55 @@ Some tests require pre-existing objects in your account:
 
 Tests that require these IDs are automatically **skipped** when the IDs are not set.
 
+## Adding new methods to the UI
+
+To expose a new API method in the playground / test UI, touch five places:
+
+### 1. `tests/` — PHPUnit integration test (optional but recommended)
+
+Add a test method to the relevant `*Test.php` class in `tests/`. Follow the existing pattern: call the service, assert `$result->isSuccess()`, clean up in `tearDownAfterClass()`.
+
+### 2. `ui/run_tests.php` — server-side dispatch
+
+Add an `elseif ($key === 'your_test_key')` block inside the main dispatch loop. Use `_res()` for a real call, `_skp()` to skip with a reason. Parse any user-supplied params from the `$p` array:
+
+```php
+} elseif ($key === 'your_test_key') {
+    $id = (int)($p['some_id'] ?? 0);
+    $r  = _res('Label', (new SomeService($cfg))->someMethod($id));
+```
+
+For dates use `_parse_date_ms()`, CSV integers `_parse_csv_ints()`, CSV strings `_parse_csv_strings()`, booleans `_parse_bool_str()`.
+
+### 3. `ui/index.php` — four JS data structures
+
+**`VAULT_PARAMS`** (PHP array, ~line 967): add a default value for each new param key so the params panel has an initial pre-fill.
+
+**`PARAM_LABELS`** (JS object, ~line 1022): add a human-readable label for each param key. These appear above the input fields.
+
+**`TEST_PARAMS`** (JS object, ~line 1057): add your test key and declare which params are required (`r`) vs optional (`o`):
+```js
+your_test_key: { r: ['required_param'], o: ['optional_param'] },
+```
+
+**`ORDER`** (array inside `updateParamsPanel()`, ~line 1300): append new param keys in the order they should appear in the params panel. A param not in `ORDER` will never appear in the panel even if listed in `TEST_PARAMS`.
+
+### 4. `ui/index.php` — `CODE_TEMPLATES`
+
+Add an entry that returns a `_tpl([NS.SVC], call)` with a copy-pasteable PHP snippet (~line 1520). Use `_phpVal()` for scalar params, `_rDate()` / `_rCsvI()` / `_rCsvS()` / `_rBool()` for report-style date/list/bool params:
+
+```js
+your_test_key: p => _tpl([NS.SOME_SVC], `$svc = new SomeService($config);\n$resp = $svc->someMethod(${_phpVal(p.some_id)});`),
+```
+
+If there is no useful snippet, omit the entry — the `</>` button simply won't appear for that test.
+
+### 5. `ui/index.php` — sidebar test list (PHP array)
+
+Find the `$tests` PHP array in the section that builds the sidebar (search for `'ping_get'`). Add your entry as `['your_test_key', 'Display label', 'read'|'write', 'section-slug']`. The section slug must match one of the existing sidebar sections.
+
+---
+
 ## Safety
 
 Tests create and clean up their own data. Cleanup runs in `tearDownAfterClass()` even if tests fail.

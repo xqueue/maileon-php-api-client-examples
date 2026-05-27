@@ -111,9 +111,19 @@ $canonicalOrder = [
     'mail_set_preview', 'mail_set_tags', 'mail_set_locale', 'mail_add_custom_prop',
     'mail_upd_custom_prop', 'mail_del_custom_prop', 'mail_disable_qos', 'mail_copy', 'mail_delete',
     'media_templates', 'media_cms2_templates',
-    'rep_recipients', 'rep_opens', 'rep_unique_opens', 'rep_clicks', 'rep_unique_clicks',
-    'rep_bounces', 'rep_unique_bounces', 'rep_unsubs', 'rep_unsub_reasons',
-    'rep_subscribers', 'rep_blocks', 'rep_conversions', 'rep_uniq_conv',
+    'rep_recipients', 'rep_recipients_list',
+    'rep_opens', 'rep_opens_list',
+    'rep_unique_opens', 'rep_unique_opens_list',
+    'rep_clicks', 'rep_clicks_list',
+    'rep_unique_clicks', 'rep_unique_clicks_list',
+    'rep_bounces', 'rep_bounces_list',
+    'rep_unsubs', 'rep_unsubs_list',
+    'rep_unsub_reasons',
+    'rep_subscribers', 'rep_subscribers_list',
+    'rep_blocks', 'rep_blocks_list',
+    'rep_conversions', 'rep_conversions_list',
+    'rep_uniq_conv', 'rep_uniq_conv_list',
+    'rep_revenue', 'rep_mailing_summaries',
     'tx_type_count', 'tx_type_list', 'tx_type_get', 'tx_type_create', 'tx_type_create2',
     'tx_send', 'tx_send_multi', 'tx_recent', 'tx_get', 'tx_delete',
     'tx_delete_by_date', 'tx_type_delete',
@@ -247,6 +257,31 @@ function _clean_debug_log(string $raw): string
     return trim($text);
 }
 
+// ── Report param helpers ──────────────────────────────────────────────────────
+
+function _parse_date_ms(?string $v): ?int {
+    if (!$v || trim($v) === '') return null;
+    $ts = strtotime(trim($v));
+    return ($ts !== false && $ts > 0) ? $ts * 1000 : null;
+}
+
+function _parse_csv_ints(?string $v): ?array {
+    if (!$v || trim($v) === '') return null;
+    $ids = array_values(array_filter(array_map('intval', explode(',', $v))));
+    return $ids ?: null;
+}
+
+function _parse_csv_strings(?string $v): ?array {
+    if (!$v || trim($v) === '') return null;
+    $items = array_values(array_filter(array_map('trim', explode(',', $v))));
+    return $items ?: null;
+}
+
+function _parse_bool_str(?string $v, bool $default): bool {
+    if ($v === null || trim($v) === '') return $default;
+    return in_array(strtolower(trim($v)), ['true', '1', 'yes'], true);
+}
+
 // ── Per-request shared state ──────────────────────────────────────────────────
 
 $st = [
@@ -343,7 +378,9 @@ foreach ($toRun as $key) {
             $r = _res('List (updated after)', (new ContactsService($cfg))->getContacts($pi, $ps, [], [], $ago30d));
 
         } elseif ($key === 'contact_blocked') {
-            $r = _res('Blocked contacts', (new ContactsService($cfg))->getBlockedContacts(1, 10));
+            $pi = max(1, (int)($p['page_index'] ?? 1));
+            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $r = _res('Blocked contacts', (new ContactsService($cfg))->getBlockedContacts([], [], $pi, $ps));
 
         } elseif ($key === 'contact_custom_fields') {
             $r = _res('Custom fields list', (new ContactsService($cfg))->getCustomFields());
@@ -604,14 +641,16 @@ foreach ($toRun as $key) {
 
         // ── Mailings – read ───────────────────────────────────────────────────
         } elseif ($key === 'mail_list') {
-            $pi = max(1, (int)($p['page_index'] ?? 1));
-            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
-            $r = _res('List by type (paginated)', (new MailingsService($cfg))->getMailingsByTypes($pi, $ps, ['regular']));
+            $pi             = max(1, (int)($p['page_index'] ?? 1));
+            $ps             = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $mailTypeFilter = trim($p['mail_type_filter'] ?? 'regular') ?: 'regular';
+            $r = _res('List by type (paginated)', (new MailingsService($cfg))->getMailingsByTypes([$mailTypeFilter], [], $pi, $ps));
 
         } elseif ($key === 'mail_list_state') {
-            $pi = max(1, (int)($p['page_index'] ?? 1));
-            $ps = max(1, min(1000, (int)($p['page_size'] ?? 100)));
-            $r = _res('List by state (paginated)', (new MailingsService($cfg))->getMailingsByStates($pi, $ps, ['draft']));
+            $pi              = max(1, (int)($p['page_index'] ?? 1));
+            $ps              = max(1, min(1000, (int)($p['page_size'] ?? 100)));
+            $mailStateFilter = trim($p['mail_state_filter'] ?? 'draft') ?: 'draft';
+            $r = _res('List by state (paginated)', (new MailingsService($cfg))->getMailingsByStates([$mailStateFilter], [], $pi, $ps));
 
         } elseif ($key === 'mail_subject') {
             $id = $st['mailing_id'] ?: $cfgMailingId;
@@ -845,91 +884,384 @@ foreach ($toRun as $key) {
 
         // ── Reports ───────────────────────────────────────────────────────────
         } elseif ($key === 'rep_recipients') {
-            if (!$cfgMailingId) {
-                $r = _skp('Recipients', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Recipients', (new ReportsService($cfg))->getRecipientsCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Recipients', (new ReportsService($cfg))->getRecipientsCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_opens') {
-            if (!$cfgMailingId) {
-                $r = _skp('Opens', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Opens', (new ReportsService($cfg))->getOpensCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Opens', (new ReportsService($cfg))->getOpensCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_format_filter'] ?: null,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_unique_opens') {
-            if (!$cfgMailingId) {
-                $r = _skp('Unique opens', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Unique opens', (new ReportsService($cfg))->getUniqueOpensCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Unique opens', (new ReportsService($cfg))->getUniqueOpensCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                $p['rep_format_filter'] ?: null,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null
+            ));
 
         } elseif ($key === 'rep_clicks') {
-            if (!$cfgMailingId) {
-                $r = _skp('Clicks', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Clicks', (new ReportsService($cfg))->getClicksCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Clicks', (new ReportsService($cfg))->getClicksCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_format_filter'] ?: null,
+                $p['rep_link_id_filter'] ?: null,
+                $p['rep_link_url_filter'] ?: null,
+                $p['rep_link_tag_filter'] ?: null,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_unique_clicks') {
-            if (!$cfgMailingId) {
-                $r = _skp('Unique clicks', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Unique clicks', (new ReportsService($cfg))->getUniqueClicksCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Unique clicks', (new ReportsService($cfg))->getUniqueClicksCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null
+            ));
 
         } elseif ($key === 'rep_bounces') {
-            if (!$cfgMailingId) {
-                $r = _skp('Bounces', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Bounces', (new ReportsService($cfg))->getBouncesCount(null, null, [$cfgMailingId]));
-            }
-
-        } elseif ($key === 'rep_unique_bounces') {
-            if (!$cfgMailingId) {
-                $r = _skp('Unique bounces', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Unique bounces', (new ReportsService($cfg))->getUniqueBouncesCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Bounces', (new ReportsService($cfg))->getBouncesCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_bounce_status_filter'] ?: null,
+                $p['rep_bounce_type'] ?: null,
+                $p['rep_bounce_source'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_unsubs') {
-            if (!$cfgMailingId) {
-                $r = _skp('Unsubscribers', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Unsubscribers', (new ReportsService($cfg))->getUnsubscribersCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Unsubscribers', (new ReportsService($cfg))->getUnsubscribersCount(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_unsub_source'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_unsub_reasons') {
-            $r = _res('Unsubscriber reasons', (new ReportsService($cfg))->getUnsubscriberReasons());
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repOrder = $p['rep_order'] ?: 'count';
+            $repAsc   = _parse_bool_str($p['rep_asc'] ?? '', true);
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Unsubscriber reasons', (new ReportsService($cfg))->getUnsubscriberReasons(
+                $repFrom, $repTo, $repOrder, $repAsc, $repPi, $repPs
+            ));
 
         } elseif ($key === 'rep_subscribers') {
-            if (!$cfgMailingId) {
-                $r = _skp('Subscribers', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Subscribers', (new ReportsService($cfg))->getSubscribersCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Subscribers', (new ReportsService($cfg))->getSubscribersCount(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_blocks') {
-            if (!$cfgMailingId) {
-                $r = _skp('Blocks', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Blocks', (new ReportsService($cfg))->getBlocksCount(null, null, [$cfgMailingId]));
-            }
+            // getBlocksCount has no mailingIds param
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Blocks', (new ReportsService($cfg))->getBlocksCount(
+                $repFrom, $repTo, $repCids, $repCems, $repCeids,
+                $p['rep_reasons'] ?: null,
+                $p['rep_old_status'] ?: null,
+                $p['rep_new_status'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
 
         } elseif ($key === 'rep_conversions') {
-            if (!$cfgMailingId) {
-                $r = _skp('Conversions', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Conversions', (new ReportsService($cfg))->getConversionsCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Conversions', (new ReportsService($cfg))->getConversionsCount(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_csv_ints($p['rep_site_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_goal_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_link_ids'] ?? '') ?? []
+            ));
 
         } elseif ($key === 'rep_uniq_conv') {
-            if (!$cfgMailingId) {
-                $r = _skp('Unique conversions', 'test_mailing_id not configured');
-            } else {
-                $r = _res('Unique conversions', (new ReportsService($cfg))->getUniqueConversionsCount(null, null, [$cfgMailingId]));
-            }
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Unique conversions', (new ReportsService($cfg))->getUniqueConversionsCount(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_csv_ints($p['rep_site_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_goal_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_link_ids'] ?? '') ?? []
+            ));
+
+        // ── Reports — list variants ───────────────────────────────────────────
+        } elseif ($key === 'rep_recipients_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Recipients', (new ReportsService($cfg))->getRecipients(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, false, $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_opens_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Opens', (new ReportsService($cfg))->getOpens(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_format_filter'] ?: null,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null,
+                false,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, false, $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_unique_opens_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Unique opens', (new ReportsService($cfg))->getUniqueOpens(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                false,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, false, $repPi, $repPs, false,
+                $p['rep_format_filter'] ?: null,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null
+            ));
+
+        } elseif ($key === 'rep_clicks_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Clicks', (new ReportsService($cfg))->getClicks(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_format_filter'] ?: null,
+                $p['rep_link_id_filter'] ?: null,
+                $p['rep_link_url_filter'] ?: null,
+                $p['rep_link_tag_filter'] ?: null,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null,
+                false,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, false, $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_unique_clicks_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Unique clicks', (new ReportsService($cfg))->getUniqueClicks(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                false,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, false, $repPi, $repPs, false,
+                $p['rep_social_filter'] ?: null,
+                $p['rep_device_filter'] ?: null
+            ));
+
+        } elseif ($key === 'rep_bounces_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Bounces', (new ReportsService($cfg))->getBounces(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_bounce_status_filter'] ?: null,
+                $p['rep_bounce_type'] ?: null,
+                $p['rep_bounce_source'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, false, $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_unsubs_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Unsubscribers', (new ReportsService($cfg))->getUnsubscribers(
+                $repFrom, $repTo, $repMids, $repCids, $repCems, $repCeids,
+                $p['rep_unsub_source'] ?: null,
+                false, $repPi, $repPs, null, null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false)
+            ));
+
+        } elseif ($key === 'rep_subscribers_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Subscribers', (new ReportsService($cfg))->getSubscribers(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                [], [], false, $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_blocks_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Blocks', (new ReportsService($cfg))->getBlocks(
+                $repFrom, $repTo, $repCids, $repCems, $repCeids,
+                $p['rep_reasons'] ?: null,
+                $p['rep_old_status'] ?: null,
+                $p['rep_new_status'] ?: null,
+                _parse_bool_str($p['rep_excl_anon'] ?? '', false),
+                null, null, $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_conversions_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Conversions', (new ReportsService($cfg))->getConversions(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_csv_ints($p['rep_site_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_goal_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_link_ids'] ?? '') ?? [],
+                $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_uniq_conv_list') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $repPi    = max(1, (int)($p['rep_page_index'] ?? 1));
+            $repPs    = max(1, min(1000, (int)($p['rep_page_size'] ?? 100)));
+            $r = _res('Unique conversions', (new ReportsService($cfg))->getUniqueConversions(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_csv_ints($p['rep_site_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_goal_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_link_ids'] ?? '') ?? [],
+                $repPi, $repPs
+            ));
+
+        } elseif ($key === 'rep_revenue') {
+            $repFrom  = _parse_date_ms($p['rep_from_date'] ?? '');
+            $repTo    = _parse_date_ms($p['rep_to_date'] ?? '');
+            $repMids  = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : null);
+            $repCids  = _parse_csv_ints($p['rep_contact_ids'] ?? '');
+            $repCems  = _parse_csv_strings($p['rep_contact_emails'] ?? '');
+            $repCeids = _parse_csv_strings($p['rep_contact_ext_ids'] ?? '');
+            $r = _res('Revenue', (new ReportsService($cfg))->getRevenue(
+                $repFrom, $repTo, $repMids ?? [], $repCids ?? [], $repCems ?? [], $repCeids ?? [],
+                _parse_csv_ints($p['rep_site_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_goal_ids'] ?? '') ?? [],
+                _parse_csv_ints($p['rep_link_ids'] ?? '') ?? []
+            ));
+
+        } elseif ($key === 'rep_mailing_summaries') {
+            $repMids = _parse_csv_ints($p['rep_mailing_ids'] ?? '') ?? ($cfgMailingId ? [$cfgMailingId] : []);
+            $r = _res('Mailing summaries', (new ReportsService($cfg))->getMailingSummaries($repMids));
 
         // ── Transactions ──────────────────────────────────────────────────────
         } elseif ($key === 'tx_type_count') {

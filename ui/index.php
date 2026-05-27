@@ -320,6 +320,10 @@ input[type=password] { font-family: var(--mono); letter-spacing: .1em; }
 .badge-write   { background: rgba(252,196,25,.15);  color: var(--warning); }
 .badge-send    { background: rgba(255,107,107,.2);  color: var(--error); }
 .badge-destroy { background: rgba(255,107,107,.3);  color: var(--error); }
+.badge-req { font-size: .68rem; padding: 1px 6px; border-radius: 10px; margin-left: 5px;
+             background: rgba(255,107,107,.18); color: var(--error); font-weight: 600; }
+.badge-opt { font-size: .68rem; padding: 1px 6px; border-radius: 10px; margin-left: 5px;
+             background: rgba(136,146,176,.13); color: var(--muted); }
 .select-row { display: flex; gap: 6px; margin-bottom: 10px; }
 
 /* ── Output ── */
@@ -649,20 +653,32 @@ $allTests = [
     ['media_templates',      'CMS1 templates', 'read', 'media'],
     ['media_cms2_templates', 'CMS2 templates', 'read', 'media'],
 
-    // Reports (require mailing ID from config)
-    ['rep_recipients',   'Recipients',         'read', 'reports'],
-    ['rep_opens',        'Opens',              'read', 'reports'],
-    ['rep_unique_opens', 'Unique opens',       'read', 'reports'],
-    ['rep_clicks',       'Clicks',             'read', 'reports'],
-    ['rep_unique_clicks','Unique clicks',      'read', 'reports'],
-    ['rep_bounces',      'Bounces',            'read', 'reports'],
-    ['rep_unique_bounces','Unique bounces',    'read', 'reports'],
-    ['rep_unsubs',       'Unsubscribers',      'read', 'reports'],
-    ['rep_unsub_reasons','Unsubscriber reasons','read','reports'],
-    ['rep_subscribers',  'Subscribers',        'read', 'reports'],
-    ['rep_blocks',       'Blocks',             'read', 'reports'],
-    ['rep_conversions',  'Conversions',        'read', 'reports'],
-    ['rep_uniq_conv',    'Unique conversions', 'read', 'reports'],
+    // Reports
+    ['rep_recipients',         'Recipients count',         'read', 'reports'],
+    ['rep_recipients_list',    'Recipients',               'read', 'reports'],
+    ['rep_opens',              'Opens count',              'read', 'reports'],
+    ['rep_opens_list',         'Opens',                    'read', 'reports'],
+    ['rep_unique_opens',       'Unique opens count',       'read', 'reports'],
+    ['rep_unique_opens_list',  'Unique opens',             'read', 'reports'],
+    ['rep_clicks',             'Clicks count',             'read', 'reports'],
+    ['rep_clicks_list',        'Clicks',                   'read', 'reports'],
+    ['rep_unique_clicks',      'Unique clicks count',      'read', 'reports'],
+    ['rep_unique_clicks_list', 'Unique clicks',            'read', 'reports'],
+    ['rep_bounces',            'Bounces count',            'read', 'reports'],
+    ['rep_bounces_list',       'Bounces',                  'read', 'reports'],
+    ['rep_unsubs',             'Unsubscribers count',      'read', 'reports'],
+    ['rep_unsubs_list',        'Unsubscribers',            'read', 'reports'],
+    ['rep_unsub_reasons',      'Unsubscriber reasons',     'read', 'reports'],
+    ['rep_subscribers',        'Subscribers count',        'read', 'reports'],
+    ['rep_subscribers_list',   'Subscribers',              'read', 'reports'],
+    ['rep_blocks',             'Blocks count',             'read', 'reports'],
+    ['rep_blocks_list',        'Blocks',                   'read', 'reports'],
+    ['rep_conversions',        'Conversions count',        'read', 'reports'],
+    ['rep_conversions_list',   'Conversions',              'read', 'reports'],
+    ['rep_uniq_conv',          'Unique conversions count', 'read', 'reports'],
+    ['rep_uniq_conv_list',     'Unique conversions',       'read', 'reports'],
+    ['rep_revenue',            'Revenue',                  'read', 'reports'],
+    ['rep_mailing_summaries',  'Mailing summaries',        'read', 'reports'],
 
     // Transactions
     ['tx_type_count',  'Type count',            'read',    'transactions'],
@@ -894,8 +910,7 @@ $sectionLabel = $sections[$activeSection] ?? $activeSection;
 <div class="topbar">
     <h2><?= htmlspecialchars($sectionLabel) ?> Tests</h2>
     <div class="topbar-actions">
-        <button class="btn btn-outline btn-sm" onclick="clearSelection()">Deselect</button>
-        <button class="btn btn-primary" id="run-btn" onclick="runTests()">
+<button class="btn btn-primary" id="run-btn" onclick="runTests()">
             <span id="run-label">Run</span>
         </button>
     </div>
@@ -939,9 +954,12 @@ $sectionLabel = $sections[$activeSection] ?? $activeSection;
 <div id="params-panel" class="panel" style="display:none">
     <div class="panel-head" style="justify-content:flex-start;gap:14px">
         <h3>Parameters</h3>
-        <span style="color:var(--muted);font-size:.8rem">Overrides apply to this run only — not saved to config</span>
+        <span style="color:var(--muted);font-size:.8rem">Values are saved in your browser (localStorage) and pre-filled next visit</span>
     </div>
     <div class="panel-body" id="params-body"></div>
+    <div class="panel-foot" style="padding:10px 16px;border-top:1px solid var(--border)">
+        <button class="btn btn-primary" onclick="runTests()">&#9654; Run selected</button>
+    </div>
 </div>
 
 <div class="panel">
@@ -976,9 +994,11 @@ const VAULT_PARAMS = <?= json_encode([
     'test_tx_type_id'   => (string)($vault['test_tx_type_id']   ?? ''),
     'test_tx_id'        => $vault['test_tx_id']        ?? '',
     'test_webhook_id'   => (string)($vault['test_webhook_id']   ?? ''),
-    'tg_name'        => 'php-ui-test-tg',
-    'mail_name'      => 'php-ui-test-mailing',
-    'mail_subject'   => 'UI Test Subject',
+    'tg_name'          => 'php-ui-test-tg',
+    'mail_name'        => 'php-ui-test-mailing',
+    'mail_subject'     => 'UI Test Subject',
+    'mail_type_filter' => 'regular',
+    'mail_state_filter'=> 'draft',
     'webhook_url'    => '',
     'cf_filter_name' => 'php-ui-test-filter',
     'pref_cat_name'  => 'php-ui-test-cat',
@@ -1016,6 +1036,33 @@ const VAULT_PARAMS = <?= json_encode([
         'standard_fields' => ['FIRSTNAME' => 'John', 'LASTNAME' => 'Doe'],
         'custom_fields'   => [],
     ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE),
+    'rep_from_date'           => '',
+    'rep_to_date'             => '',
+    'rep_mailing_ids'         => '',
+    'rep_contact_ids'         => '',
+    'rep_contact_emails'      => '',
+    'rep_contact_ext_ids'     => '',
+    'rep_excl_anon'           => 'false',
+    'rep_format_filter'       => '',
+    'rep_social_filter'       => '',
+    'rep_device_filter'       => '',
+    'rep_link_id_filter'      => '',
+    'rep_link_url_filter'     => '',
+    'rep_link_tag_filter'     => '',
+    'rep_bounce_status_filter'=> '',
+    'rep_bounce_type'         => '',
+    'rep_bounce_source'       => '',
+    'rep_unsub_source'        => '',
+    'rep_reasons'             => '',
+    'rep_old_status'          => '',
+    'rep_new_status'          => '',
+    'rep_site_ids'            => '',
+    'rep_goal_ids'            => '',
+    'rep_link_ids'            => '',
+    'rep_order'               => 'count',
+    'rep_asc'                 => 'true',
+    'rep_page_index'          => '1',
+    'rep_page_size'           => '100',
 ], JSON_HEX_TAG|JSON_HEX_AMP) ?>;
 const PARAM_LABELS = {
     test_email:        'Test email',
@@ -1029,9 +1076,11 @@ const PARAM_LABELS = {
     test_tx_type_id:   'Transaction Type ID',
     test_tx_id:        'Transaction ID',
     test_webhook_id:   'Webhook ID',
-    tg_name:           'Target group name',
-    mail_name:         'Mailing name',
-    mail_subject:      'Mailing subject',
+    tg_name:            'Target group name',
+    mail_name:          'Mailing name',
+    mail_subject:       'Mailing subject',
+    mail_type_filter:   'Mailing type (regular/trigger/…)',
+    mail_state_filter:  'Mailing state (draft/done/…)',
     webhook_url:       'Webhook URL',
     cf_filter_name:    'Contact filter name',
     pref_cat_name:     'Pref. category name',
@@ -1046,6 +1095,33 @@ const PARAM_LABELS = {
     de_update_body:    'Update payload (JSON)',
     de_sync_body:      'Records (JSON array)',
     contact_body:      'Contact fields (JSON)',
+    rep_from_date:            'From date (e.g. 2024-01-01)',
+    rep_to_date:              'To date (e.g. 2024-12-31)',
+    rep_mailing_ids:          'Mailing IDs (CSV, e.g. 123,456)',
+    rep_contact_ids:          'Contact IDs (CSV ints)',
+    rep_contact_emails:       'Contact emails (CSV)',
+    rep_contact_ext_ids:      'External IDs (CSV)',
+    rep_excl_anon:            'Exclude anonymous (true/false)',
+    rep_format_filter:        'Format filter',
+    rep_social_filter:        'Social network filter',
+    rep_device_filter:        'Device type filter',
+    rep_link_id_filter:       'Link ID filter',
+    rep_link_url_filter:      'Link URL filter',
+    rep_link_tag_filter:      'Link tag filter',
+    rep_bounce_status_filter: 'Bounce status code filter',
+    rep_bounce_type:          'Bounce type filter',
+    rep_bounce_source:        'Bounce source filter',
+    rep_unsub_source:         'Unsubscribe source filter',
+    rep_reasons:              'Block reasons filter',
+    rep_old_status:           'Old status filter',
+    rep_new_status:           'New status filter',
+    rep_site_ids:             'Site IDs (CSV ints)',
+    rep_goal_ids:             'Goal IDs (CSV ints)',
+    rep_link_ids:             'Link IDs (CSV ints)',
+    rep_order:                'Order (count/date)',
+    rep_asc:                  'Ascending (true/false)',
+    rep_page_index:           'Page index',
+    rep_page_size:            'Page size',
 };
 // Each entry: { r: [...required params], o: [...optional params] }
 // Required = test skips/fails without it and has no session fallback.
@@ -1054,8 +1130,9 @@ const TEST_PARAMS = {
     // ── Contacts ─────────────────────────────────────────────────────────────
     contact_get_by_email:          { r: ['test_email'],                               o: [] },
     contact_get_by_ext_id:         { r: ['test_external_id'],                         o: [] },
-    contact_list:                  { r: [],                                            o: ['page_index', 'page_size'] },
-    contact_list_update_after:     { r: [],                                            o: ['page_index', 'page_size'] },
+    contact_list:                  { r: [],  o: ['page_index', 'page_size'] },
+    contact_list_update_after:     { r: [],  o: ['page_index', 'page_size'] },
+    contact_blocked:               { r: [],  o: ['page_index', 'page_size'] },
     contact_create:                { r: ['test_email'],                               o: ['test_external_id', 'contact_body'] },
     contact_create_ext_id:         { r: ['test_email2', 'test_external_id2'],         o: ['contact_body'] },
     contact_update:                { r: ['test_email'],                               o: ['contact_body'] },
@@ -1079,58 +1156,72 @@ const TEST_PARAMS = {
     pref_delete:                   { r: ['pref_cat_name', 'pref_name'],               o: [] },
     // ── Contact filters ───────────────────────────────────────────────────────
     cf_list:                       { r: [],                                            o: ['page_index', 'page_size'] },
-    cf_get:                        { r: [],                                            o: ['test_cf_id'] },
-    cf_refresh:                    { r: [],                                            o: ['test_cf_id'] },
+    cf_get:                        { r: ['test_cf_id'],                                o: [] },
+    cf_refresh:                    { r: ['test_cf_id'],                                o: [] },
     cf_create:                     { r: ['cf_filter_name'],                           o: [] },
     cf_update:                     { r: ['cf_filter_name'],                           o: [] },
     // ── Target groups ─────────────────────────────────────────────────────────
     tg_list:                       { r: [],                                            o: ['page_index', 'page_size'] },
     tg_create:                     { r: ['tg_name'],                                   o: [] },
     // ── Mailings – read (test_mailing_id optional: has $st session fallback) ──
-    mail_list:                     { r: [],                                            o: ['page_index', 'page_size'] },
-    mail_list_state:               { r: [],                                            o: ['page_index', 'page_size'] },
-    mail_subject:                  { r: [],                                            o: ['test_mailing_id'] },
-    mail_sender:                   { r: [],                                            o: ['test_mailing_id'] },
-    mail_sender_alias:             { r: [],                                            o: ['test_mailing_id'] },
-    mail_replyto:                  { r: [],                                            o: ['test_mailing_id'] },
-    mail_preview:                  { r: [],                                            o: ['test_mailing_id'] },
-    mail_tags:                     { r: [],                                            o: ['test_mailing_id'] },
-    mail_locale:                   { r: [],                                            o: ['test_mailing_id'] },
-    mail_html:                     { r: [],                                            o: ['test_mailing_id'] },
-    mail_archive_url:              { r: [],                                            o: ['test_mailing_id'] },
-    mail_report_url:               { r: [],                                            o: ['test_mailing_id'] },
-    mail_domain:                   { r: [],                                            o: ['test_mailing_id'] },
-    mail_state:                    { r: [],                                            o: ['test_mailing_id'] },
-    mail_type:                     { r: [],                                            o: ['test_mailing_id'] },
-    mail_cf_restrictions:          { r: [],                                            o: ['test_mailing_id'] },
-    mail_custom_props:             { r: [],                                            o: ['test_mailing_id'] },
-    mail_copy:                     { r: [],                                            o: ['test_mailing_id'] },
+    mail_list:                     { r: [],  o: ['mail_type_filter',  'page_index', 'page_size'] },
+    mail_list_state:               { r: [],  o: ['mail_state_filter', 'page_index', 'page_size'] },
+    mail_subject:                  { r: ['test_mailing_id'],                           o: [] },
+    mail_sender:                   { r: ['test_mailing_id'],                           o: [] },
+    mail_sender_alias:             { r: ['test_mailing_id'],                           o: [] },
+    mail_replyto:                  { r: ['test_mailing_id'],                           o: [] },
+    mail_preview:                  { r: ['test_mailing_id'],                           o: [] },
+    mail_tags:                     { r: ['test_mailing_id'],                           o: [] },
+    mail_locale:                   { r: ['test_mailing_id'],                           o: [] },
+    mail_html:                     { r: ['test_mailing_id'],                           o: [] },
+    mail_archive_url:              { r: ['test_mailing_id'],                           o: [] },
+    mail_report_url:               { r: ['test_mailing_id'],                           o: [] },
+    mail_domain:                   { r: ['test_mailing_id'],                           o: [] },
+    mail_state:                    { r: ['test_mailing_id'],                           o: [] },
+    mail_type:                     { r: ['test_mailing_id'],                           o: [] },
+    mail_cf_restrictions:          { r: ['test_mailing_id'],                           o: [] },
+    mail_custom_props:             { r: ['test_mailing_id'],                           o: [] },
+    mail_copy:                     { r: ['test_mailing_id'],                           o: [] },
     mail_exists:                   { r: ['mail_name'],                                 o: [] },
     mail_create:                   { r: ['mail_name', 'mail_subject'],                 o: [] },
     mail_set_sender:               { r: [],                                            o: ['test_email'] },
     mail_set_replyto:              { r: [],                                            o: ['test_email'] },
-    // ── Reports (test_mailing_id required: no session fallback) ───────────────
-    rep_recipients:                { r: ['test_mailing_id'],                           o: [] },
-    rep_opens:                     { r: ['test_mailing_id'],                           o: [] },
-    rep_unique_opens:              { r: ['test_mailing_id'],                           o: [] },
-    rep_clicks:                    { r: ['test_mailing_id'],                           o: [] },
-    rep_unique_clicks:             { r: ['test_mailing_id'],                           o: [] },
-    rep_bounces:                   { r: ['test_mailing_id'],                           o: [] },
-    rep_unique_bounces:            { r: ['test_mailing_id'],                           o: [] },
-    rep_unsubs:                    { r: ['test_mailing_id'],                           o: [] },
-    rep_subscribers:               { r: ['test_mailing_id'],                           o: [] },
-    rep_blocks:                    { r: ['test_mailing_id'],                           o: [] },
-    rep_conversions:               { r: ['test_mailing_id'],                           o: [] },
-    rep_uniq_conv:                 { r: ['test_mailing_id'],                           o: [] },
+    // ── Reports (all params optional; rep_mailing_ids falls back to test_mailing_id) ──
+    rep_recipients:    { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon'] },
+    rep_opens:         { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_format_filter','rep_social_filter','rep_device_filter','rep_excl_anon'] },
+    rep_unique_opens:  { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon','rep_format_filter','rep_social_filter','rep_device_filter'] },
+    rep_clicks:        { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_format_filter','rep_link_id_filter','rep_link_url_filter','rep_link_tag_filter','rep_social_filter','rep_device_filter','rep_excl_anon'] },
+    rep_unique_clicks: { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon','rep_social_filter','rep_device_filter'] },
+    rep_bounces:       { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_bounce_status_filter','rep_bounce_type','rep_bounce_source','rep_excl_anon'] },
+    rep_unsubs:        { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_unsub_source','rep_excl_anon'] },
+    rep_subscribers:   { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon'] },
+    rep_blocks:        { r: [], o: ['rep_from_date','rep_to_date','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_reasons','rep_old_status','rep_new_status','rep_excl_anon'] },
+    rep_conversions:   { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_site_ids','rep_goal_ids','rep_link_ids'] },
+    rep_uniq_conv:     { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_site_ids','rep_goal_ids','rep_link_ids'] },
+    rep_unsub_reasons: { r: [], o: ['rep_from_date','rep_to_date','rep_order','rep_asc','rep_page_index','rep_page_size'] },
+    // ── Reports — list variants ───────────────────────────────────────────────
+    rep_recipients_list:    { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_opens_list:         { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_format_filter','rep_social_filter','rep_device_filter','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_unique_opens_list:  { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon','rep_format_filter','rep_social_filter','rep_device_filter','rep_page_index','rep_page_size'] },
+    rep_clicks_list:        { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_format_filter','rep_link_id_filter','rep_link_url_filter','rep_link_tag_filter','rep_social_filter','rep_device_filter','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_unique_clicks_list: { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon','rep_social_filter','rep_device_filter','rep_page_index','rep_page_size'] },
+    rep_bounces_list:       { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_bounce_status_filter','rep_bounce_type','rep_bounce_source','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_unsubs_list:        { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_unsub_source','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_subscribers_list:   { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_blocks_list:        { r: [], o: ['rep_from_date','rep_to_date','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_reasons','rep_old_status','rep_new_status','rep_excl_anon','rep_page_index','rep_page_size'] },
+    rep_conversions_list:   { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_site_ids','rep_goal_ids','rep_link_ids','rep_page_index','rep_page_size'] },
+    rep_uniq_conv_list:     { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_site_ids','rep_goal_ids','rep_link_ids','rep_page_index','rep_page_size'] },
+    rep_revenue:            { r: [], o: ['rep_from_date','rep_to_date','rep_mailing_ids','rep_contact_ids','rep_contact_emails','rep_contact_ext_ids','rep_site_ids','rep_goal_ids','rep_link_ids'] },
+    rep_mailing_summaries:  { r: [], o: ['rep_mailing_ids'] },
     // ── Transactions ──────────────────────────────────────────────────────────
     tx_type_list:                  { r: [],                                            o: ['page_index', 'page_size'] },
     tx_type_get:                   { r: ['test_tx_type_id'],                           o: [] },
-    tx_send:                       { r: ['test_email'],                               o: ['test_tx_type_id'] },
-    tx_send_multi:                 { r: ['test_email'],                               o: ['test_tx_type_id'] },
-    tx_recent:                     { r: [],                                            o: ['test_tx_type_id'] },
+    tx_send:                       { r: ['test_email', 'test_tx_type_id'],             o: [] },
+    tx_send_multi:                 { r: ['test_email', 'test_tx_type_id'],             o: [] },
+    tx_recent:                     { r: ['test_tx_type_id'],                           o: [] },
     tx_get:                        { r: ['test_tx_type_id', 'test_tx_id'],             o: [] },
     tx_delete:                     { r: ['test_tx_type_id', 'test_tx_id'],             o: [] },
-    tx_delete_by_date:             { r: [],                                            o: ['test_tx_type_id'] },
+    tx_delete_by_date:             { r: ['test_tx_type_id'],                           o: [] },
     tx_type_create:                { r: ['tx_type_name'],                              o: [] },
     tx_type_create2:               { r: ['tx_type_name2'],                             o: [] },
     // ── Blacklists ────────────────────────────────────────────────────────────
@@ -1147,7 +1238,7 @@ const TEST_PARAMS = {
     de_create:                     { r: [],                                            o: ['de_create_body'] },
     de_get:                        { r: ['test_de_id'],                                o: [] },
     de_get_fields:                 { r: ['test_de_id'],                                o: [] },
-    de_update:                     { r: [],                                            o: ['test_de_id', 'de_update_body'] },
+    de_update:                     { r: ['test_de_id'],                                o: ['de_update_body'] },
     de_records:                    { r: ['test_de_id'],                                o: ['page_index', 'page_size'] },
     de_records_desc:               { r: ['test_de_id'],                                o: ['page_index', 'page_size'] },
     de_records_filtered:           { r: ['test_de_id'],                                o: ['page_index', 'page_size'] },
@@ -1155,7 +1246,7 @@ const TEST_PARAMS = {
     de_sync_insert_ign:            { r: ['test_de_id'],                                o: ['de_sync_body'] },
     de_sync_empty:                 { r: ['test_de_id'],                                o: [] },
     de_delete_records:             { r: ['test_de_id'],                                o: [] },
-    de_delete:                     { r: [],                                            o: ['test_de_id'] },
+    de_delete:                     { r: ['test_de_id'],                                o: [] },
 };
 
 function clearSelection() {
@@ -1277,15 +1368,32 @@ async function runTests() {
     });
 }
 
+function saveParam(key, val) {
+    try { localStorage.setItem('maileon_param_' + key, val); } catch(e) {}
+}
+function loadParam(key) {
+    try { const v = localStorage.getItem('maileon_param_' + key); return v !== undefined ? v : null; } catch(e) { return null; }
+}
+
 function updateParamsPanel() {
     const ORDER = ['test_email','test_email2','test_external_id','test_external_id2',
                    'test_mailing_id','test_cf_id','test_blacklist_id','test_de_id',
                    'test_tx_type_id','test_tx_id','test_webhook_id',
                    'page_index','page_size',
-                   'tg_name','mail_name','mail_subject','cf_filter_name',
+                   'tg_name','mail_name','mail_subject','mail_type_filter','mail_state_filter','cf_filter_name',
                    'pref_cat_name','pref_name','cf_field_name','mbl_name',
                    'webhook_url','tx_type_name','tx_type_name2',
-                   'de_create_body','de_update_body','de_sync_body','contact_body'];
+                   'de_create_body','de_update_body','de_sync_body','contact_body',
+                   'rep_from_date','rep_to_date','rep_mailing_ids',
+                   'rep_contact_ids','rep_contact_emails','rep_contact_ext_ids',
+                   'rep_excl_anon',
+                   'rep_format_filter','rep_social_filter','rep_device_filter',
+                   'rep_link_id_filter','rep_link_url_filter','rep_link_tag_filter',
+                   'rep_bounce_status_filter','rep_bounce_type','rep_bounce_source',
+                   'rep_unsub_source',
+                   'rep_reasons','rep_old_status','rep_new_status',
+                   'rep_site_ids','rep_goal_ids','rep_link_ids',
+                   'rep_order','rep_asc','rep_page_index','rep_page_size'];
     const checked  = [...document.querySelectorAll('#test-checks input:checked')].map(c => c.value);
     const seen     = new Set();
     const required = new Set();
@@ -1301,7 +1409,7 @@ function updateParamsPanel() {
     if (!panel) return;
     if (!needed.length) { panel.style.display = 'none'; return; }
 
-    // Preserve values already typed in this session
+    // Prefer: in-page value > localStorage > vault default
     const current = {};
     needed.forEach(p => { const el = document.getElementById('param-' + p); if (el) current[p] = el.value; });
 
@@ -1310,14 +1418,15 @@ function updateParamsPanel() {
         needed.map(p => {
             const labelText = PARAM_LABELS[p] || p;
             const dflt      = VAULT_PARAMS[p] ?? '';
-            const val       = current[p] !== undefined ? current[p] : dflt;
+            const saved     = loadParam(p);
+            const val       = current[p] !== undefined ? current[p] : (saved !== null ? saved : dflt);
             const isBody    = p.endsWith('_body');
             const req       = required.has(p);
             const isEmpty   = val === '' || val === '0';
 
             const reqMark = req
-                ? `<span style="color:var(--error);margin-left:3px" title="Required — test skips without this">*</span>`
-                : `<span style="color:var(--muted);font-size:.7rem;margin-left:5px">opt</span>`;
+                ? `<span class="badge-req" title="Required — test skips without this">Required</span>`
+                : `<span class="badge-opt">Optional</span>`;
             const configLink = (req && isEmpty)
                 ? `<a href="?section=__config" style="color:var(--accent2);font-size:.7rem;margin-left:8px">→ Configure</a>`
                 : '';
@@ -1327,14 +1436,16 @@ function updateParamsPanel() {
             if (isBody) {
                 return `<div class="form-group form-group-full">
                     <label>${labelHtml}</label>
-                    <textarea id="param-${escHtml(p)}" class="body-ta" spellcheck="false">${escHtml(val)}</textarea>
+                    <textarea id="param-${escHtml(p)}" class="body-ta" spellcheck="false"
+                              oninput="saveParam('${escHtml(p)}', this.value)">${escHtml(val)}</textarea>
                 </div>`;
             }
             const inputStyle = (req && isEmpty) ? ' style="border-color:rgba(255,107,107,.5)"' : '';
             return `<div class="form-group">
                 <label>${labelHtml}</label>
                 <input type="text" id="param-${escHtml(p)}" value="${escHtml(val)}"
-                       placeholder="${escHtml(dflt || 'not set')}"${inputStyle}>
+                       placeholder="${escHtml(dflt || 'not set')}"${inputStyle}
+                       oninput="saveParam('${escHtml(p)}', this.value)">
             </div>`;
         }).join('') + '</div>';
 }
@@ -1440,6 +1551,11 @@ function _phpVal(v) {
     if (!isNaN(v) && v !== '') return String(+v);
     return "'" + String(v).replace(/'/g, "\\'") + "'";
 }
+function _rDate(v)    { v=(v||'').trim(); return v?`strtotime(${_phpVal(v)}) * 1000`:'null'; }
+function _rCsvI(v)    { if(!(v||'').trim()) return 'null'; const a=v.split(',').map(x=>+x.trim()).filter(n=>Number.isInteger(n)&&n>0); return a.length?`[${a.join(', ')}]`:'null'; }
+function _rCsvS(v)    { if(!(v||'').trim()) return 'null'; const a=v.split(',').map(x=>x.trim()).filter(Boolean); return a.length?`[${a.map(s=>"'"+s.replace(/\\/g,'\\\\').replace(/'/g,"\\'")+`'`).join(', ')}]`:'null'; }
+function _rBool(v, d) { v=(v||'').trim().toLowerCase(); return v===''?(d?'true':'false'):(['true','1','yes'].includes(v)?'true':'false'); }
+function _rStr(v)     { v=(v||'').trim(); return v?_phpVal(v):'null'; }
 
 // Namespace shortcuts used in templates
 const NS = {
@@ -1496,21 +1612,35 @@ const CODE_TEMPLATES = {
     contact_delete:          p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->deleteContactByEmail(${_phpVal(p.test_email)});`),
     contact_unsubscribe_email: p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->unsubscribeContactByEmail(${_phpVal(p.test_email)});`),
     // Reports
-    rep_recipients:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getRecipientsCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_opens:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getOpensCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_unique_opens: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueOpensCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_clicks:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getClicksCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_unique_clicks: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueClicksCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_bounces:       p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBouncesCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_unsubs:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUnsubscribersCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_subscribers:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getSubscribersCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_blocks:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBlocksCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_conversions:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getConversionsCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_uniq_conv:     p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueConversionsCount(null, null, [${+p.test_mailing_id||0}]);`),
-    rep_unsub_reasons: p => _tpl([NS.REP], '$svc = new ReportsService($config);\n$resp = $svc->getUnsubscriberReasons();'),
+    rep_recipients:    p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getRecipientsCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_opens:         p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getOpensCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_format_filter)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_unique_opens:  p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueOpensCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rBool(p.rep_excl_anon,false)}, ${_rStr(p.rep_format_filter)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)});`),
+    rep_clicks:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getClicksCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_format_filter)}, ${_rStr(p.rep_link_id_filter)}, ${_rStr(p.rep_link_url_filter)}, ${_rStr(p.rep_link_tag_filter)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_unique_clicks: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueClicksCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rBool(p.rep_excl_anon,false)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)});`),
+    rep_bounces:       p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBouncesCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_bounce_status_filter)}, ${_rStr(p.rep_bounce_type)}, ${_rStr(p.rep_bounce_source)}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_unsubs:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUnsubscribersCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_unsub_source)}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_subscribers:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getSubscribersCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_blocks:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBlocksCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_reasons)}, ${_rStr(p.rep_old_status)}, ${_rStr(p.rep_new_status)}, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_conversions:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getConversionsCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rCsvI(p.rep_site_ids)||'[]'}, ${_rCsvI(p.rep_goal_ids)||'[]'}, ${_rCsvI(p.rep_link_ids)||'[]'});`),
+    rep_uniq_conv:     p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueConversionsCount(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rCsvI(p.rep_site_ids)||'[]'}, ${_rCsvI(p.rep_goal_ids)||'[]'}, ${_rCsvI(p.rep_link_ids)||'[]'});`),
+    rep_unsub_reasons:      p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUnsubscriberReasons(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${(p.rep_order||'').trim()?_phpVal(p.rep_order):"'count'"}, ${_rBool(p.rep_asc,true)}, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    // Reports — list variants
+    rep_recipients_list:    p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getRecipients(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rBool(p.rep_excl_anon,false)}, null, null, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_opens_list:         p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getOpens(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_format_filter)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)}, false, ${_rBool(p.rep_excl_anon,false)}, null, null, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_unique_opens_list:  p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueOpens(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, false, ${_rBool(p.rep_excl_anon,false)}, null, null, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100}, false, ${_rStr(p.rep_format_filter)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)});`),
+    rep_clicks_list:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getClicks(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_format_filter)}, ${_rStr(p.rep_link_id_filter)}, ${_rStr(p.rep_link_url_filter)}, ${_rStr(p.rep_link_tag_filter)}, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)}, false, ${_rBool(p.rep_excl_anon,false)}, null, null, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_unique_clicks_list: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueClicks(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, false, ${_rBool(p.rep_excl_anon,false)}, null, null, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100}, false, ${_rStr(p.rep_social_filter)}, ${_rStr(p.rep_device_filter)});`),
+    rep_bounces_list:       p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBounces(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_bounce_status_filter)}, ${_rStr(p.rep_bounce_type)}, ${_rStr(p.rep_bounce_source)}, ${_rBool(p.rep_excl_anon,false)}, null, null, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_unsubs_list:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUnsubscribers(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_unsub_source)}, false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100}, null, null, ${_rBool(p.rep_excl_anon,false)});`),
+    rep_subscribers_list:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getSubscribers(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rBool(p.rep_excl_anon,false)}, [], [], false, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_blocks_list:        p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getBlocks(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_contact_ids)}, ${_rCsvS(p.rep_contact_emails)}, ${_rCsvS(p.rep_contact_ext_ids)}, ${_rStr(p.rep_reasons)}, ${_rStr(p.rep_old_status)}, ${_rStr(p.rep_new_status)}, ${_rBool(p.rep_excl_anon,false)}, null, null, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_conversions_list:   p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getConversions(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rCsvI(p.rep_site_ids)||'[]'}, ${_rCsvI(p.rep_goal_ids)||'[]'}, ${_rCsvI(p.rep_link_ids)||'[]'}, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_uniq_conv_list:     p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueConversions(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rCsvI(p.rep_site_ids)||'[]'}, ${_rCsvI(p.rep_goal_ids)||'[]'}, ${_rCsvI(p.rep_link_ids)||'[]'}, ${+p.rep_page_index||1}, ${+p.rep_page_size||100});`),
+    rep_revenue:            p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getRevenue(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rCsvI(p.rep_site_ids)||'[]'}, ${_rCsvI(p.rep_goal_ids)||'[]'}, ${_rCsvI(p.rep_link_ids)||'[]'});`),
+    rep_mailing_summaries:  p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getMailingSummaries(${_rCsvI(p.rep_mailing_ids)||'[]'});`),
     // Mailings
-    mail_list:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getMailingsByTypes(${+p.page_index||1}, ${+p.page_size||100}, ['regular']);`),
-    mail_list_state: p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getMailingsByStates(${+p.page_index||1}, ${+p.page_size||100}, ['draft']);`),
+    mail_list:       p => _tpl([NS.MAIL], `$type = ${_phpVal(p.mail_type_filter||'regular')}; // regular|trigger|doi|...\n$svc  = new MailingsService($config);\n$resp = $svc->getMailingsByTypes([$type], [], ${+p.page_index||1}, ${+p.page_size||100});`),
+    mail_list_state: p => _tpl([NS.MAIL], `$state = ${_phpVal(p.mail_state_filter||'draft')}; // draft|done|sending|queued|...\n$svc   = new MailingsService($config);\n$resp  = $svc->getMailingsByStates([$state], [], ${+p.page_index||1}, ${+p.page_size||100});`),
     mail_subject:    p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getSubject(${+p.test_mailing_id||0});`),
     mail_html:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getHTMLContent(${+p.test_mailing_id||0});`),
     mail_copy:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->copyMailing(${+p.test_mailing_id||0});`),
@@ -1584,7 +1714,7 @@ $resp = $svc->synchronizeRecords(${+p.test_de_id||0}, [$rec], 'INSERT_IGNORE_DUP
     de_sync_empty:      p => _tpl([NS.DE], `$svc  = new DataExtensionsService($config);\n$resp = $svc->synchronizeRecords(${+p.test_de_id||0}, []); // must return null`),
     de_delete_records:  p => _tpl([NS.DE], `$svc  = new DataExtensionsService($config);\n$resp = $svc->deleteAllRecords(${+p.test_de_id||0}); // irreversible`),
     // Contacts – read (additional)
-    contact_blocked:      p => _tpl([NS.CONTACT], '$svc = new ContactsService($config);\n$resp = $svc->getBlockedContacts(1, 10);'),
+    contact_blocked:      p => _tpl([NS.CONTACT], `$svc = new ContactsService($config);\n$resp = $svc->getBlockedContacts([], [], ${+p.page_index||1}, ${+p.page_size||100});`),
     contact_custom_fields: p => _tpl([NS.CONTACT], '$svc = new ContactsService($config);\n$resp = $svc->getCustomFields();'),
     // Contacts – write
     contact_create: p => _tpl([NS.CONTACT, NS.CONTACT_OBJ, NS.PERMISSION, NS.SYNC_MODE],
@@ -1788,8 +1918,6 @@ $resp = $svc->deleteMailing($id); // irreversible`),
     // Media
     media_templates:      p => _tpl([NS.MEDIA], '$svc = new MediaService($config);\n$resp = $svc->getMailingTemplates();'),
     media_cms2_templates: p => _tpl([NS.MEDIA], '$svc = new MediaService($config);\n$resp = $svc->getCms2MailingTemplates();'),
-    // Reports (additional)
-    rep_unique_bounces: p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getUniqueBouncesCount(null, null, [${+p.test_mailing_id||0}]);`),
     // Transactions (additional)
     tx_type_count: p => _tpl([NS.TX], '$svc = new TransactionsService($config);\n$resp = $svc->getTransactionTypesCount();'),
     tx_type_create: p => _tpl([NS.TX, NS.TX_TYPE, NS.ATTR_TYPE, NS.DATA_TYPE],
