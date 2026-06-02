@@ -305,6 +305,10 @@ input[type=text]:focus, input[type=password]:focus, input[type=number]:focus {
     outline: none; border-color: var(--accent); }
 textarea.body-ta { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius); color: var(--text); padding: 7px 10px; font-size: .78rem; width: 100%; box-sizing: border-box; font-family: var(--mono); resize: vertical; min-height: 150px; line-height: 1.5; transition: border-color .15s; }
 textarea.body-ta:focus { outline: none; border-color: var(--accent); }
+select.param-sel { background: var(--bg); border: 1px solid var(--border); border-radius: var(--radius);
+    color: var(--text); padding: 7px 10px; font-size: .88rem; width: 100%; cursor: pointer;
+    font-family: inherit; transition: border-color .15s; -webkit-appearance: none; appearance: none; }
+select.param-sel:focus { outline: none; border-color: var(--accent); }
 .form-group-full { grid-column: 1 / -1; }
 input[type=password] { font-family: var(--mono); letter-spacing: .1em; }
 .sensitive { font-family: var(--mono); letter-spacing: .08em; }
@@ -999,6 +1003,7 @@ const VAULT_PARAMS = <?= json_encode([
     'mail_subject'     => 'UI Test Subject',
     'mail_type_filter' => 'regular',
     'mail_state_filter'=> 'draft',
+    'mail_fields'      => '',
     'webhook_url'    => '',
     'cf_filter_name' => 'php-ui-test-filter',
     'pref_cat_name'  => 'php-ui-test-cat',
@@ -1079,8 +1084,9 @@ const PARAM_LABELS = {
     tg_name:            'Target group name',
     mail_name:          'Mailing name',
     mail_subject:       'Mailing subject',
-    mail_type_filter:   'Mailing type (regular/trigger/…)',
-    mail_state_filter:  'Mailing state (draft/done/…)',
+    mail_type_filter:   'Mailing type',
+    mail_state_filter:  'Mailing state',
+    mail_fields:        'Fields to return',
     webhook_url:       'Webhook URL',
     cf_filter_name:    'Contact filter name',
     pref_cat_name:     'Pref. category name',
@@ -1164,8 +1170,8 @@ const TEST_PARAMS = {
     tg_list:                       { r: [],                                            o: ['page_index', 'page_size'] },
     tg_create:                     { r: ['tg_name'],                                   o: [] },
     // ── Mailings – read (test_mailing_id optional: has $st session fallback) ──
-    mail_list:                     { r: [],  o: ['mail_type_filter',  'page_index', 'page_size'] },
-    mail_list_state:               { r: [],  o: ['mail_state_filter', 'page_index', 'page_size'] },
+    mail_list:                     { r: [],  o: ['mail_type_filter', 'mail_fields', 'page_index', 'page_size'] },
+    mail_list_state:               { r: [],  o: ['mail_state_filter', 'mail_fields', 'page_index', 'page_size'] },
     mail_subject:                  { r: ['test_mailing_id'],                           o: [] },
     mail_sender:                   { r: ['test_mailing_id'],                           o: [] },
     mail_sender_alias:             { r: ['test_mailing_id'],                           o: [] },
@@ -1247,6 +1253,12 @@ const TEST_PARAMS = {
     de_sync_empty:                 { r: ['test_de_id'],                                o: [] },
     de_delete_records:             { r: ['test_de_id'],                                o: [] },
     de_delete:                     { r: ['test_de_id'],                                o: [] },
+};
+
+const PARAM_WIDGETS = {
+    mail_type_filter:  { type: 'select', options: ['regular', 'trigger', 'doi'] },
+    mail_state_filter: { type: 'select', options: ['draft', 'scheduled', 'queued', 'preparing', 'sending', 'paused', 'checks', 'blacklist', 'done', 'archiving', 'archived', 'canceled', 'failed', 'released'] },
+    mail_fields:       { type: 'multiselect', options: ['type', 'state', 'name', 'scheduleTime'] },
 };
 
 function clearSelection() {
@@ -1374,13 +1386,22 @@ function saveParam(key, val) {
 function loadParam(key) {
     try { const v = localStorage.getItem('maileon_param_' + key); return v !== undefined ? v : null; } catch(e) { return null; }
 }
+function updateMultiParam(key, checkbox) {
+    const hiddenEl = document.getElementById('param-' + key);
+    if (!hiddenEl) return;
+    const items = new Set(hiddenEl.value.split(',').map(s => s.trim()).filter(Boolean));
+    if (checkbox.checked) items.add(checkbox.value);
+    else items.delete(checkbox.value);
+    hiddenEl.value = [...items].join(',');
+    saveParam(key, hiddenEl.value);
+}
 
 function updateParamsPanel() {
     const ORDER = ['test_email','test_email2','test_external_id','test_external_id2',
                    'test_mailing_id','test_cf_id','test_blacklist_id','test_de_id',
                    'test_tx_type_id','test_tx_id','test_webhook_id',
                    'page_index','page_size',
-                   'tg_name','mail_name','mail_subject','mail_type_filter','mail_state_filter','cf_filter_name',
+                   'tg_name','mail_name','mail_subject','mail_type_filter','mail_state_filter','mail_fields','cf_filter_name',
                    'pref_cat_name','pref_name','cf_field_name','mbl_name',
                    'webhook_url','tx_type_name','tx_type_name2',
                    'de_create_body','de_update_body','de_sync_body','contact_body',
@@ -1433,6 +1454,37 @@ function updateParamsPanel() {
             const labelHtml = `${escHtml(labelText)}${reqMark}${configLink}`
                 + `<span style="color:var(--muted);font-size:.7rem;margin-left:6px">${escHtml(p)}</span>`;
 
+            const widget = PARAM_WIDGETS[p];
+            if (widget) {
+                if (widget.type === 'select') {
+                    const safeVal = val || widget.options[0];
+                    return `<div class="form-group">
+                        <label>${labelHtml}</label>
+                        <select id="param-${escHtml(p)}" class="param-sel"
+                                onchange="saveParam('${escHtml(p)}', this.value)">
+                            ${widget.options.map(opt =>
+                                `<option value="${escHtml(opt)}"${safeVal === opt ? ' selected' : ''}>${escHtml(opt)}</option>`
+                            ).join('')}
+                        </select>
+                    </div>`;
+                }
+                if (widget.type === 'multiselect') {
+                    const selected = new Set(val.split(',').map(s => s.trim()).filter(Boolean));
+                    return `<div class="form-group form-group-full">
+                        <label>${labelHtml}</label>
+                        <input type="hidden" id="param-${escHtml(p)}" value="${escHtml(val)}">
+                        <div class="check-grid" style="margin-top:6px">
+                            ${widget.options.map(opt =>
+                                `<label class="check-item">
+                                    <input type="checkbox" value="${escHtml(opt)}"${selected.has(opt) ? ' checked' : ''}
+                                           onchange="updateMultiParam('${escHtml(p)}', this)">
+                                    <span>${escHtml(opt)}</span>
+                                </label>`
+                            ).join('')}
+                        </div>
+                    </div>`;
+                }
+            }
             if (isBody) {
                 return `<div class="form-group form-group-full">
                     <label>${labelHtml}</label>
@@ -1639,8 +1691,8 @@ const CODE_TEMPLATES = {
     rep_revenue:            p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getRevenue(${_rDate(p.rep_from_date)}, ${_rDate(p.rep_to_date)}, ${_rCsvI(p.rep_mailing_ids)||'[]'}, ${_rCsvI(p.rep_contact_ids)||'[]'}, ${_rCsvS(p.rep_contact_emails)||'[]'}, ${_rCsvS(p.rep_contact_ext_ids)||'[]'}, ${_rCsvI(p.rep_site_ids)||'[]'}, ${_rCsvI(p.rep_goal_ids)||'[]'}, ${_rCsvI(p.rep_link_ids)||'[]'});`),
     rep_mailing_summaries:  p => _tpl([NS.REP], `$svc = new ReportsService($config);\n$resp = $svc->getMailingSummaries(${_rCsvI(p.rep_mailing_ids)||'[]'});`),
     // Mailings
-    mail_list:       p => _tpl([NS.MAIL], `$type = ${_phpVal(p.mail_type_filter||'regular')}; // regular|trigger|doi|...\n$svc  = new MailingsService($config);\n$resp = $svc->getMailingsByTypes([$type], [], ${+p.page_index||1}, ${+p.page_size||100});`),
-    mail_list_state: p => _tpl([NS.MAIL], `$state = ${_phpVal(p.mail_state_filter||'draft')}; // draft|done|sending|queued|...\n$svc   = new MailingsService($config);\n$resp  = $svc->getMailingsByStates([$state], [], ${+p.page_index||1}, ${+p.page_size||100});`),
+    mail_list:       p => { const flds=(p.mail_fields||'').split(',').map(s=>s.trim()).filter(Boolean); return _tpl([NS.MAIL], `$types  = [${_phpVal(p.mail_type_filter||'regular')}]; // regular|trigger|doi\n$fields = ${flds.length?'['+flds.map(f=>"'"+f+"'").join(', ')+']':'[]'}; // type|state|name|scheduleTime\n$svc    = new MailingsService($config);\n$resp   = $svc->getMailingsByTypes($types, $fields, ${+p.page_index||1}, ${+p.page_size||100});`); },
+    mail_list_state: p => { const flds=(p.mail_fields||'').split(',').map(s=>s.trim()).filter(Boolean); return _tpl([NS.MAIL], `$states = [${_phpVal(p.mail_state_filter||'draft')}]; // draft|done|sending|queued|...\n$fields = ${flds.length?'['+flds.map(f=>"'"+f+"'").join(', ')+']':'[]'}; // type|state|name|scheduleTime\n$svc    = new MailingsService($config);\n$resp   = $svc->getMailingsByStates($states, $fields, ${+p.page_index||1}, ${+p.page_size||100});`); },
     mail_subject:    p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getSubject(${+p.test_mailing_id||0});`),
     mail_html:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->getHTMLContent(${+p.test_mailing_id||0});`),
     mail_copy:       p => _tpl([NS.MAIL], `$svc = new MailingsService($config);\n$resp = $svc->copyMailing(${+p.test_mailing_id||0});`),

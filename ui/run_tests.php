@@ -644,13 +644,15 @@ foreach ($toRun as $key) {
             $pi             = max(1, (int)($p['page_index'] ?? 1));
             $ps             = max(1, min(1000, (int)($p['page_size'] ?? 100)));
             $mailTypeFilter = trim($p['mail_type_filter'] ?? 'regular') ?: 'regular';
-            $r = _res('List by type (paginated)', (new MailingsService($cfg))->getMailingsByTypes([$mailTypeFilter], [], $pi, $ps));
+            $mailFields     = array_values(array_filter(array_map('trim', explode(',', $p['mail_fields'] ?? ''))));
+            $r = _res('List by type (paginated)', (new MailingsService($cfg))->getMailingsByTypes([$mailTypeFilter], $mailFields, $pi, $ps));
 
         } elseif ($key === 'mail_list_state') {
             $pi              = max(1, (int)($p['page_index'] ?? 1));
             $ps              = max(1, min(1000, (int)($p['page_size'] ?? 100)));
             $mailStateFilter = trim($p['mail_state_filter'] ?? 'draft') ?: 'draft';
-            $r = _res('List by state (paginated)', (new MailingsService($cfg))->getMailingsByStates([$mailStateFilter], [], $pi, $ps));
+            $mailFields      = array_values(array_filter(array_map('trim', explode(',', $p['mail_fields'] ?? ''))));
+            $r = _res('List by state (paginated)', (new MailingsService($cfg))->getMailingsByStates([$mailStateFilter], $mailFields, $pi, $ps));
 
         } elseif ($key === 'mail_subject') {
             $id = $st['mailing_id'] ?: $cfgMailingId;
